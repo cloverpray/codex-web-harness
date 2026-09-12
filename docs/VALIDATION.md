@@ -41,3 +41,8 @@ The local Alpha.2 Linux AppImage passed symbol checks and an isolated desktop la
 A real native rollout reproduced Alpha.2's rejection of a midnight calendar delta; replay through the fixed resolver recovered the same cwd and sandbox from native turn_context. No model call or research experiment was replayed. Synthetic regressions cover tagged and untagged wire messages, altered content, incorrect native provenance, mismatched dates and non-calendar world-state changes.
 
 Local `bun run verify` passed: **722 runtime tests, 1 platform skip; 297 launcher tests**, dependency audits, type checking, renderer build and relocatable-runtime smoke. The authenticated date-only exception does not derive filesystem authority from request XML. Alpha.3 cross-platform package results must be checked in its own CI run.
+
+
+### 5.0.7-alpha.4 local response-binding validation
+
+`bun run verify`: 724 runtime tests passed, one platform skip, zero failures; 297 launcher tests passed. Types, dependency audits, renderer build and relocatable runtime smoke passed. Added stable-message identity matching across three replaced containers, missing/ambiguous identity rejection, delayed message identity capture and new-user rejection through the binding lifecycle. The original incident has no saved prior message IDs, so it cannot be replayed byte-for-byte; these tests cover the recoverable identity-preserving transition. No research experiments were resubmitted for validation.

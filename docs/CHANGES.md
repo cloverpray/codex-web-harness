@@ -40,3 +40,10 @@ Release dependency refresh: Hono 4.13.5 and js-yaml 4.3.2 are pinned to address 
 Codex can emit a date-only environment delta at local midnight after `task_started`, without a new cwd and without wire-level turn attribution. The earlier history verifier rejected it because it only admitted environment messages preceding that boundary. The bridge now accepts this narrow case only when the canonical rollout proves the exact message ID/content, marks it as this turn's native `environments.environment_context`, and immediately records a matching date-only `world_state`. Filesystem authority still comes from the current native `turn_context`; changed content, wrong provenance and non-date state mutations remain rejected.
 
 修复跨午夜时当前 turn 的日期增量被误判为历史环境的故障；不关闭环境验证、不放宽目录或权限。回归覆盖有/无 wire turn 标记、内容篡改、错误来源、日期不匹配及混入目录更新。
+
+
+## 5.0.7-alpha.4 — response identity recovery
+
+Track stable assistant message IDs while a response streams. When React replaces multiple historical turn containers, rebind only to the unique container containing the previously observed assistant message. Missing or ambiguous message provenance remains an error; a new user turn is still rejected. Identity failures now explain the page/identity problem instead of reporting that ChatGPT stopped responding. No prompt is resubmitted by this recovery.
+
+回复容器重建时通过已观察到的消息身份恢复绑定；不能核对身份时明确报错，不按位置选最后一条回复。新增纯函数和绑定生命周期回归测试。此前失败诊断未保存旧消息身份，因此这修复了有证据可核对的重建场景，并不声称复现了原故障的全部浏览器状态。

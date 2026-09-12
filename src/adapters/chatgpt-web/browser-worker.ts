@@ -146,6 +146,7 @@ const CHATGPT_DOM_REVISION_ATTRIBUTES = [
   "data-item-anchor",
   "data-is-last-node",
   "data-message-author-role",
+  "data-message-id",
   "data-state",
   "data-streaming-response-status",
   "data-testid",
@@ -1201,6 +1202,7 @@ interface ChatGptAssistantTurnBinding {
   identity: string;
   locator: Locator;
   acceptedTurnIdentities: readonly string[];
+  messageIds?: readonly string[];
 }
 
 interface ChatGptSubmissionDomState {
@@ -1210,6 +1212,7 @@ interface ChatGptSubmissionDomState {
   turnIdentities: string[];
   userIdentities: string[];
   responseIdentities: string[];
+  responseMessageIds?: Record<string, string[]>;
 }
 
 interface ChatGptSubmissionDomCache {
@@ -1366,8 +1369,18 @@ export function chatGptReboundTurnIdentity(
   initial: readonly string[],
   boundIdentity: string,
   current: readonly string[],
+  messageIds: readonly string[] = [],
+  currentMessageIds: Readonly<Record<string, readonly string[]>> = {},
 ): string | undefined {
   if (current.includes(boundIdentity)) return boundIdentity;
+  if (messageIds.length) {
+    const known = new Set(messageIds);
+    const matches = current.filter(identity => currentMessageIds[identity]?.some(id => known.has(id)));
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) throw new Error("ChatGPT response identity is ambiguous: message IDs match multiple turns");
+    // Once message provenance exists, never downgrade to a positional/single-node guess.
+    throw new Error("ChatGPT response identity changed without matching message IDs");
+  }
   return chatGptNewTurnIdentity(initial, current);
 }
 
@@ -2673,7 +2686,13 @@ export class ChatGptBrowserWorker {
           !== element.getAttribute("data-turn-id-container"));
       const turnIdentities = identities(containers, "data-turn-id-container");
       const userIdentities = identities([...document.querySelectorAll(options.userTurnSelector)], "data-turn-id");
-      const responseIdentities = identities([...document.querySelectorAll(options.assistantTurnSelector)], "data-turn-id");
+      const responseElements = [...document.querySelectorAll(options.assistantTurnSelector)];
+      const responseIdentities = identities(responseElements, "data-turn-id");
+      const responseMessageIds = Object.fromEntries(responseElements.map((element, index) => [
+        responseIdentities[index],
+        [...element.querySelectorAll('[data-message-author-role="assistant"][data-message-id]')]
+          .map(message => message.getAttribute("data-message-id") ?? "").filter(Boolean),
+      ]));
       const knownTurns = new Set(turnIdentities);
       if ([...userIdentities, ...responseIdentities].some(identity => !knownTurns.has(identity))) {
         throw new Error("ChatGPT conversation turn has no matching identity container");
@@ -2687,6 +2706,7 @@ export class ChatGptBrowserWorker {
           turnIdentities,
           userIdentities,
           responseIdentities,
+          responseMessageIds,
         },
       };
     }, {
@@ -2843,6 +2863,7 @@ export class ChatGptBrowserWorker {
         identity,
         locator: observationPage.locator(`[data-turn-id=${JSON.stringify(identity)}]`),
         acceptedTurnIdentities: state.turnIdentities,
+        messageIds: state.responseMessageIds?.[identity] ?? [],
       };
       // A delayed renderer wake can cross the grace while the assistant appears. Only a fresh
       // observation can prove it is still missing; the explicit turn deadline remains above.
@@ -2868,7 +2889,12 @@ export class ChatGptBrowserWorker {
     const boundCount = await withChatGptBrowserObservationTimeout(
       withBrowserTurnAbort(binding.locator.count(), signal),
     );
-    if (boundCount === 1) return binding;
+    if (boundCount === 1) {
+      // A streaming placeholder may acquire its stable message ID after first binding.
+      const state = await this.submissionDomState(page, baseline.domCache, signal);
+      const ids = state.responseMessageIds?.[binding.identity] ?? [];
+      return ids.length ? { ...binding, messageIds: ids } : binding;
+    }
     if (boundCount > 1) {
       throw new Error(`ChatGPT exposed ${boundCount} DOM nodes for the bound assistant turn`);
     }
@@ -2881,12 +2907,15 @@ export class ChatGptBrowserWorker {
       baseline.initialTurnIdentities,
       binding.identity,
       state.responseIdentities,
+      binding.messageIds,
+      state.responseMessageIds,
     );
     if (!identity || identity === binding.identity) return binding;
     return {
       identity,
       locator: page.locator(`[data-turn-id=${JSON.stringify(identity)}]`),
       acceptedTurnIdentities: state.turnIdentities,
+      messageIds: state.responseMessageIds?.[identity] ?? binding.messageIds,
     };
   }
 

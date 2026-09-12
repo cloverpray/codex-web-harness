@@ -61,6 +61,7 @@ test("submission DOM tracks logical identities and retains virtualized history i
       "data-turn-id-container": turn.id,
       "data-testid": container ? null : `conversation-turn-${turn.index}`,
     })[name],
+    querySelectorAll: () => [{ getAttribute: () => `message-${turn.id}` }],
     parentElement: { closest: () => container ? null : element(turn, true) },
   });
   const context = createContext({
@@ -3998,3 +3999,36 @@ test("a stage that spans a system sleep is not charged for the slept time", asyn
   await stage;
   expect(outcome).toEqual(["ChatGPT browser stage timed out: probe"]);
 }, 10_000);
+
+
+test("assistant rebind uses stable message provenance when all three turn IDs change", () => {
+  expect(chatGptReboundTurnIdentity(["old1", "old2"], "old3", ["new1", "new2", "new3"],
+    ["message3"], {new1: ["message1"], new2: ["message2"], new3: ["message3"]})).toBe("new3");
+  expect(() => chatGptReboundTurnIdentity([], "old", ["new"], ["message3"],
+    {new: ["unrelated"]})).toThrow("without matching message IDs");
+  expect(() => chatGptReboundTurnIdentity([], "old", ["a", "b"], ["message3"],
+    {a: ["message3"], b: ["message3"]})).toThrow("ambiguous");
+});
+
+test("bound assistant learns late message identity and survives history container replacement", async () => {
+  const worker = Object.create(ChatGptBrowserWorker.prototype) as any;
+  let state: any = {turnIdentities: ["user", "old1", "old2", "old3"], userIdentities: ["user"],
+    responseIdentities: ["old1", "old2", "old3"], responseMessageIds: {old3: ["message3"]}};
+  worker.submissionDomState = async () => state;
+  let attached = true;
+  const binding = {identity: "old3", locator: {count: async () => attached ? 1 : 0},
+    acceptedTurnIdentities: state.turnIdentities, messageIds: []};
+  const page = {locator: (selector: string) => ({selector})};
+  const baseline = {initialTurnIdentities: ["old1", "old2"], domCache: {}};
+  const learned = await worker.reconcileAssistantTurnBinding(page, baseline, binding);
+  expect(learned.messageIds).toEqual(["message3"]);
+  attached = false;
+  state = {turnIdentities: ["user", "new1", "new2", "new3"], userIdentities: ["user"],
+    responseIdentities: ["new1", "new2", "new3"],
+    responseMessageIds: {new1: ["message1"], new2: ["message2"], new3: ["message3"]}};
+  const rebound = await worker.reconcileAssistantTurnBinding(page, baseline, learned);
+  expect(rebound.identity).toBe("new3");
+  expect(rebound.messageIds).toEqual(["message3"]);
+  state.userIdentities.push("another-user");
+  await expect(worker.reconcileAssistantTurnBinding(page, baseline, learned)).rejects.toThrow("another user turn");
+});
