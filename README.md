@@ -1,6 +1,6 @@
 # Codex Web Harness
 
-**Keep your Codex workflow. Run selected sessions through ChatGPT Web.**
+**Put your ChatGPT plan to work. Read the repo, change the code, run the tests—from Codex.**
 
 [简体中文](README.zh-CN.md) · [Installation & profiles](docs/GETTING_STARTED.md) · [Build & release](docs/BUILDING.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
@@ -8,11 +8,21 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Preview](https://img.shields.io/badge/status-alpha-orange.svg)](docs/VALIDATION.md)
 
-![Codex tools, ChatGPT Web, one workflow](assets/readme/hero.svg)
+![Put your ChatGPT plan to work](assets/readme/hero-en.png)
 
-An unofficial desktop launcher and local Responses bridge for using ChatGPT Web from Codex. This fork focuses on reliable long sessions, opt-in routing, smaller repeated prompts, and bounded tool coordination.
+Already paying for ChatGPT? Bring its available Web reasoning modes into your development workflow. Codex Web Harness connects ChatGPT in the browser to a Codex task, so it can work with selected project files, call permitted local tools, and follow the results.
+
+You stay in the terminal. The model works through the Web. This unofficial launcher handles the bridge.
 
 Derived from [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web). See [provenance and changes](docs/CHANGES.md). This project is not affiliated with OpenAI.
+
+## More work from the access you already have
+
+Long debugging sessions and repeated experiments can add up on a metered model API. This project gives you another route: **use your available ChatGPT Web allowance for those sessions, without model API token charges for the Web inference itself.**
+
+That is the practical saving: get more use from access you already have. Your ChatGPT plan, supported models and usage limits still apply; this does not turn a free account into Pro. Full-mode tool access has its own setup requirements. For API budgeting, check the current [GPT-6 Astra pricing](https://developers.openai.com/api/docs/models/gpt-6-astra) rather than a screenshot of yesterday's prices.
+
+Native Codex also supports [ChatGPT-plan access](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan). Choose this harness when you specifically want the **Web reasoning route and its available modes** in a Codex task.
 
 ## What can you build with it?
 
@@ -24,7 +34,7 @@ Derived from [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-
 | Ask for a second opinion | Optionally use a [Pro teacher](extras/research) with a compact evidence packet while the main executor owns all writes. |
 | Keep native Codex nearby | Use an explicit Web profile rather than making every session use the browser route. |
 
-**Best fit:** developers who want available ChatGPT Web reasoning modes inside an existing Codex workflow and accept browser-transport overhead. **Less suitable:** workflows dominated by many tiny sequential tool calls or requiring native-backend behavior to be identical.
+Try it on a bug that needs a few substantial reads and test runs, or an investigation where careful reasoning matters more than instant tool round trips. Browser transport adds overhead; many tiny sequential calls are still better served by native Codex.
 
 ## Upstream strengths, focused improvements
 
@@ -39,7 +49,7 @@ The upstream project supplies the core capability: a cross-platform desktop laun
 | Failure handling | Browser and bridge lifecycle management | Pre-stream environment rejection and explicit cancellation-settlement checks |
 | Teacher coordination | Fixed 30-second Web waits | A bounded 55-second option for evidence-only teachers, keeping 30-second worker waits |
 
-These are implementation differences against the recorded upstream base, not a claim that every upstream workflow fails or that this fork is universally faster. [Changes and provenance](docs/CHANGES.md) · [Validation](docs/VALIDATION.md).
+The aim is to make long tasks easier to finish: send less repeated context, recover supported compacted sessions, and reject recursive tool requests before they become timeouts. We have not measured a general speedup over upstream or native Codex. [Changes and provenance](docs/CHANGES.md) · [Validation](docs/VALIDATION.md).
 
 ## How it fits together
 
@@ -56,7 +66,7 @@ Upstream interface demonstration, included with attribution. This is not a recor
 
 ## Get started
 
-1. Download the matching installer from [Releases](https://github.com/cloverpray/codex-web-harness/releases). Before a release is published, preview packages are available in successful [CI runs](https://github.com/cloverpray/codex-web-harness/actions/workflows/ci.yml).
+1. Download the matching preview installer from [Releases](https://github.com/cloverpray/codex-web-harness/releases).
 2. Open the launcher and sign in to ChatGPT in its embedded browser.
 3. Follow the browser verification and model setup steps. For local tools, complete the launcher's MCP/Tunnel setup and **Verify runtime**.
 4. Configure the opt-in profile using [the profile guide](docs/GETTING_STARTED.md). Installing the app alone does **not** automatically create the `web` profile.
@@ -84,8 +94,8 @@ The model slug selects the Web effort. Availability depends on the account and c
 | Platform | Package | Validation for this fork |
 |---|---|---|
 | Linux x64 | AppImage | Local authenticated workflow exercised; CI builds and smoke tests |
-| Windows x64 | Installer `.exe` | CI target; authenticated end-to-end validation still required |
-| macOS arm64 / x64 | `.dmg`, `.zip` | CI targets; authenticated end-to-end validation still required |
+| Windows x64 | Installer `.exe` | CI build and smoke passed; real-account validation pending |
+| macOS arm64 / x64 | `.dmg`, `.zip` | Both CI builds and smoke checks passed; real-account validation pending |
 
 The last pre-extraction Linux runtime suite passed **716 tests, with 1 platform skip**. A long-session recovery test completed compaction and the following reply; a subsequent resume also completed. These are correctness observations, **not a native-versus-Web speed benchmark**. Current source validation and release status are recorded in [VALIDATION.md](docs/VALIDATION.md).
 

@@ -1,6 +1,6 @@
 # Codex Web Harness
 
-**保留 Codex 工作流，为指定会话接入 ChatGPT 网页端。**
+**让网页里的 GPT，动手写代码。把已有的 ChatGPT 额度，用到真实项目里。**
 
 [English](README.md) · [安装与模式配置](docs/GETTING_STARTED.md) · [构建与发布](docs/BUILDING.md) · [故障排查](TROUBLESHOOTING.md)
 
@@ -8,11 +8,21 @@
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![预览版](https://img.shields.io/badge/status-alpha-orange.svg)](docs/VALIDATION.md)
 
-![Codex 工具与 ChatGPT 网页，一个工作流](assets/readme/hero.svg)
+![让网页里的 GPT，动手写代码](assets/readme/hero-zh.png)
 
-这是一个非官方桌面启动器与本地 Responses 桥接器，让 Codex 会话通过 ChatGPT 网页端运行。本分支重点改进长会话恢复、显式路由切换、重复上下文传输和工具等待。
+ChatGPT 已经订阅了，写项目时还在来回粘贴代码？这个项目把网页里的模型接到 Codex 任务中，让它读取选定文件、修改代码、运行权限允许的命令，再根据测试结果继续做事。
+
+你在终端里提需求，模型通过网页推理，工具在任务环境中执行。这个非官方启动器负责把它们接起来。
 
 基于 [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web)，保留原许可证与贡献者归属。[来源与改动](docs/CHANGES.md)。本项目与 OpenAI 无隶属关系。
+
+## 网页额度也能拿来干活，少一份 API 开销
+
+用 GPT-6 这类模型反复读代码、排查问题、跑实验，按 token 付费的账单很容易累积。既然账户里还有可用的 ChatGPT 网页额度，就可以把它用在这些任务上。**走本项目的 Web 推理路线，不为这部分推理另付模型 API token 费用。**
+
+所谓“白嫖”，这里指的是把已有额度用足。订阅费和账户限额仍然存在，免费账户也不会因此获得 Pro；本地工具所需的 Full 模式还要单独完成配置。需要比较 API 成本，可以直接看 [GPT-6 Astra 官方现价](https://developers.openai.com/api/docs/models/gpt-6-astra)，这里不放容易过期的价格截图。
+
+原生 Codex 本身也支持[使用 ChatGPT 套餐](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)。这个项目的特色，是让你在 Codex 任务中选择**网页版推理路线及账户可用档位**。
 
 ## 能帮开发者做什么？
 
@@ -24,7 +34,7 @@
 | 获取第二意见 | 可选用 [Pro 教师](extras/research)阅读紧凑证据包，由主执行者承担全部写入。 |
 | 保留原生 Codex | 通过显式 Web profile 选择路线，不要求所有会话都经过网页。 |
 
-**适合：** 希望在现有 Codex 工作流中使用 ChatGPT 网页推理档位，且能够接受浏览器传输开销的开发者。**不太适合：** 大量微小、顺序工具调用，或要求与原生后端行为完全一致的场景。
+可以先拿一个需要读几份文件、跑几轮测试的 bug 试试，或者让它处理需要较多思考的调查任务。浏览器传输有额外开销；如果任务全是细碎的顺序工具调用，原生 Codex 通常更合适。
 
 ## 原版的优势，我们增加的改进
 
@@ -39,7 +49,7 @@
 | 故障处理 | 浏览器及桥接生命周期管理 | 流式响应前拒绝确定性环境错误，明确取消是否收尾 |
 | 教师协调 | 固定30秒 Web 等待 | 无工具教师可用有界55秒选项，工作子模型保留30秒建议 |
 
-这些是相对于记录的上游基线的实现差异，不代表原版所有场景都有故障，也不代表本分支全面更快。[改动与来源](docs/CHANGES.md) · [验证范围](docs/VALIDATION.md)。
+这些改动围绕一件实际的事：让长任务更容易做完。少传重复上下文，接续支持的压缩会话，在递归调用拖成超时前报错。目前还没有相对上游或原生 Codex 的整体提速数据。[改动与来源](docs/CHANGES.md) · [验证范围](docs/VALIDATION.md)。
 
 ## 工作方式
 
@@ -56,7 +66,7 @@
 
 ## 快速开始
 
-1. 在 [Releases](https://github.com/cloverpray/codex-web-harness/releases) 下载对应安装包。尚未发布 Release 时，可从成功的 [CI 构建](https://github.com/cloverpray/codex-web-harness/actions/workflows/ci.yml) 下载预览产物。
+1. 在 [Releases](https://github.com/cloverpray/codex-web-harness/releases) 下载对应的预览版安装包。
 2. 启动应用，在内置浏览器中登录 ChatGPT。
 3. 完成浏览器验证和模型设置。需要本地工具时，按启动器指引完成 MCP/Tunnel 配置，并运行 **Verify runtime**。
 4. 按[模式配置指南](docs/GETTING_STARTED.md)建立显式 Web profile。**仅安装应用不会自动创建 `web` profile。**
@@ -84,8 +94,8 @@ codex -p web resume YOUR_SESSION_ID
 | 平台 | 安装包 | 本分支验证范围 |
 |---|---|---|
 | Linux x64 | AppImage | 已做本地登录后的真实工作流验证；CI 构建与冒烟测试 |
-| Windows x64 | `.exe` 安装器 | CI 构建目标；仍需真实登录、工具与压缩验证 |
-| macOS arm64／x64 | `.dmg`、`.zip` | CI 构建目标；仍需真实登录后的端到端验证 |
+| Windows x64 | `.exe` 安装器 | CI 构建及冒烟通过；真实账户流程待验证 |
+| macOS arm64／x64 | `.dmg`、`.zip` | 两种架构 CI 构建及冒烟通过；真实账户流程待验证 |
 
 整理发行源码前，Linux 运行时全量测试为 **716 通过、1 项平台跳过**，并验证了长会话自动压缩、继续回复及再次恢复。这些结果证明特定流程可用，**不代表已经完成原生／Web 速度或研究质量对照**。最新状态见 [VALIDATION.md](docs/VALIDATION.md)。
 

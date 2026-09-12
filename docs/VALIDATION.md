@@ -19,3 +19,9 @@ After updating the pinned Hono/js-yaml dependencies, `bun run verify` passed loc
 The clean checkout installed locked JS dependencies. Its Electron binary download stalled on the local network; local validation used the already-verified matching Electron distribution via ELECTRON_OVERRIDE_DIST_PATH. Hosted CI must download its own platform binaries and build the installers. This local result does not predeclare hosted packaging success.
 
 更新 Hono/js-yaml 锁定依赖后，本地 verify 全部通过：运行时716通过/1跳过，启动器297通过，依赖审计、类型检查、构建、许可证生成与运行时搬迁冒烟通过，可选快照6项通过。本机 Electron 二进制下载曾停滞，本地验证使用已有同版本发行文件；托管 CI 仍需自行下载并打包各平台，不能用本地结果替代。
+
+## Four-platform CI (2026-09-12)
+
+[CI run 34698239624](https://github.com/cloverpray/codex-web-harness/actions/runs/34698239624) passed all five jobs: actionlint and native verification/package/smoke jobs for Linux x64, Windows x64, macOS arm64 and macOS x64. Verified source: `cad429a00b356466ed5ed1d93d3ff235d05e6fc2`. Later documentation and artwork commits do not change the installer build identity.
+
+四个平台及 actionlint 均已通过。发布流程复用该次 CI 的安装包，核验源码身份和 SHA-256 后发布，不重新打包。后续文档和配图改动不会改变这些安装包对应的源码 commit。Windows/macOS 真实账户测试仍待补充。
