@@ -41,3 +41,9 @@ CI 在 main 推送、PR 或手动 Run workflow 时构建四个平台产物，保
 Do not publish account-bound fixtures, local session dumps or research artifacts. Authenticated Windows/macOS validation remains a separate release gate; a green packaging job does not prove a real ChatGPT tool turn.
 
 不要发布登录资料、会话转储或研究产物。CI 打包通过不等于真实登录后的工具与压缩流程已通过。
+
+## Publish existing verified packages / 发布已验证产物
+
+The manually dispatched **Publish verified preview** workflow accepts a successful main-branch CI run ID. It requires all four platform artifacts from the same commit/version, validates their checksums and publishes a prerelease without rebuilding or replacing an existing release.
+
+手动运行 Publish verified preview，输入成功的 main 分支 CI run ID。流程核对四个平台产物、commit、版本与校验值，再发布预发布版本；不重建安装包，不覆盖已有 Release。

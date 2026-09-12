@@ -1,0 +1,119 @@
+name: Publish verified preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful main-branch CI run containing all four platform artifacts
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - name: Verify source run
+        id: source
+        shell: bash
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > run.json
+          python3 - <<'PY'
+          import json, os, re
+          r = json.load(open('run.json'))
+          assert r['status'] == 'completed' and r['conclusion'] == 'success', 'CI must have passed'
+          assert r['event'] == 'push' and r['head_branch'] == 'main', 'Only main push builds may publish'
+          assert r['path'] == '.github/workflows/ci.yml', 'Unexpected workflow'
+          assert r['head_repository']['full_name'] == os.environ['GITHUB_REPOSITORY'], 'Unexpected source repository'
+          sha = r['head_sha']
+          assert re.fullmatch('[0-9a-f]{40}', sha)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f: f.write('sha=' + sha + '\n')
+          PY
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          pattern: packages-*
+          path: ci-packages
+      - name: Verify and assemble release assets
+        id: assets
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, shutil
+          root = pathlib.Path('ci-packages')
+          expected = {'packages-ubuntu-24.04', 'packages-windows-2025', 'packages-macos-15', 'packages-macos-15-intel'}
+          assert {p.name for p in root.iterdir()} == expected, 'All four platforms are required'
+          version = json.load(open('package.json'))['version']
+          assert re.fullmatch(r'\d+\.\d+\.\d+-[A-Za-z0-9.-]+', version), 'This workflow only publishes prereleases'
+          output = pathlib.Path('release-assets'); output.mkdir()
+          for platform in sorted(expected):
+              folder = root / platform
+              info = json.loads((folder / 'BUILD_INFO.json').read_text())
+              assert info['commit'] == os.environ['SOURCE_SHA']
+              assert info['repository'] == os.environ['GITHUB_REPOSITORY']
+              assert info['version'] == version
+              covered = set()
+              for line in (folder / 'checksums.txt').read_text().splitlines():
+                  digest, name = line.split('  ', 1)
+                  assert pathlib.Path(name).name == name and re.fullmatch('[0-9a-f]{64}', digest)
+                  assert hashlib.sha256((folder / name).read_bytes()).hexdigest() == digest, name
+                  covered.add(name)
+              assert covered == {p.name for p in folder.iterdir() if p.name != 'checksums.txt'}
+              packages = [p for p in folder.iterdir() if p.suffix in {'.exe', '.AppImage', '.dmg', '.zip', '.blockmap'}]
+              assert packages, platform
+              for file in packages:
+                  assert not (output / file.name).exists(), 'Duplicate asset name'
+                  shutil.copy2(file, output / file.name)
+              shutil.copy2(folder / 'BUILD_INFO.json', output / (platform + '-BUILD_INFO.json'))
+          for name in ['LICENSE', 'scripts/install-launcher.sh', 'scripts/install-launcher.ps1']:
+              shutil.copy2(name, output / pathlib.Path(name).name)
+          for file in pathlib.Path('LICENSES').iterdir():
+              if file.is_file(): shutil.copy2(file, output / file.name)
+          with (output / 'checksums.txt').open('w') as f:
+              for file in sorted(output.iterdir()):
+                  if file.name != 'checksums.txt': f.write(hashlib.sha256(file.read_bytes()).hexdigest() + '  ' + file.name + '\n')
+          repo = os.environ['GITHUB_REPOSITORY']
+          notes = f'''First public preview / 首个公开预览版
+
+          Opt-in Web profiles, Codex 0.154 text-compaction recovery, retained context, recursion protection and optional research helpers. See the bilingual README for setup and the upstream attribution.
+
+          提供显式 Web profile、长会话恢复、上下文复用、递归保护及可选研究组件。安装与使用请看中英文 README；仅安装应用不会自动建立 Web profile。
+
+          All four platform packages passed CI build/smoke checks. Authenticated manual coverage for this fork remains Linux; Windows/macOS still need real-account validation. No native-Codex speed or quality parity is claimed. Windows packages are unsigned; macOS signatures do not imply notarization. Experimental MCP batching stays disabled.
+
+          四个平台已通过 CI 构建及冒烟，真实登录后的人工验证仍仅覆盖 Linux；Windows/macOS 需补充实测。不承诺与原生 Codex 等速或效果相同。Windows 包未签名；macOS 构建签名不等于公证。实验性 MCP 批处理默认关闭。
+
+          Verify checksums.txt. The desktop app name remains Codex Web GPT. Finish active tasks before updating.
+
+          Source: {os.environ['SOURCE_SHA']}
+          Build: https://github.com/{repo}/actions/runs/{os.environ['RUN_ID']}
+          '''
+          pathlib.Path('release-notes.md').write_text(notes)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f: f.write('tag=v' + version + '\n')
+          PY
+      - name: Publish prerelease
+        env:
+          TAG: ${{ steps.assets.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          gh release create "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" --title "$TAG — Public preview / 公开预览版" \
+            --prerelease --latest=false --notes-file release-notes.md
