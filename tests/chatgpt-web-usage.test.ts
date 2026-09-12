@@ -41,7 +41,9 @@ test("multipart selection accounts for whole-record and composer fit before subm
         .toEqual([...contents]);
     }
   }
-}, 30_000);
+// Baseline (non-AVX2) Windows Bun takes >30s to tokenize this stress fixture.
+// Keep the fixture and all conservation assertions; this is not a latency benchmark.
+}, 60_000);
 
 test("Bigger Context compaction selects three parts before the legacy inline byte budget", () => {
   const parsed = request("x".repeat(160_000));

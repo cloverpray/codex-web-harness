@@ -8,28 +8,51 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Preview](https://img.shields.io/badge/status-alpha-orange.svg)](docs/VALIDATION.md)
 
+![Codex tools, ChatGPT Web, one workflow](assets/readme/hero.svg)
+
 An unofficial desktop launcher and local Responses bridge for using ChatGPT Web from Codex. This fork focuses on reliable long sessions, opt-in routing, smaller repeated prompts, and bounded tool coordination.
 
 Derived from [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web). See [provenance and changes](docs/CHANGES.md). This project is not affiliated with OpenAI.
 
-## Why this fork?
+## What can you build with it?
 
-- **Opt-in Web sessions.** Configure a Web profile, then use `codex` for your existing native setup and `codex -p web` for the browser route.
-- **Long-session recovery.** Handles Codex 0.154 Responses-based text compaction, alongside existing compaction protocols.
-- **Less repeated context.** Confirmed retained conversations receive new context without resending unchanged static instructions.
-- **Bounded failures.** Rejects recursive bridge calls; deterministic environment errors return before streaming begins.
-- **Task-bound tools.** Full mode connects the current Codex task's tools through MCP, retaining the native permission boundary.
-- **Optional research utilities.** Read-only state snapshots, compact evidence packets, and an evidence-only teacher configuration live in [`extras/research`](extras/research). They are not installed automatically.
+| Developer task | How the harness helps |
+|---|---|
+| Debug a repository | Let a Web model inspect selected files, run permitted local commands, and use test output in the same Codex task. |
+| Review or implement a change | Keep your terminal, task context and native tool presentation while choosing an available Web reasoning route. |
+| Continue a long investigation | Resume the task after supported compaction, with authoritative checkpoints and artifacts kept on disk. |
+| Ask for a second opinion | Optionally use a [Pro teacher](extras/research) with a compact evidence packet while the main executor owns all writes. |
+| Keep native Codex nearby | Use an explicit Web profile rather than making every session use the browser route. |
 
-```mermaid
-flowchart LR
-  C[Codex session] --> R[Local Responses bridge]
-  R --> B[Launcher browser]
-  B --> W[ChatGPT Web]
-  W --> M[MCP / Tunnel]
-  M --> T[Current Codex task tools]
-  T --> C
-```
+**Best fit:** developers who want available ChatGPT Web reasoning modes inside an existing Codex workflow and accept browser-transport overhead. **Less suitable:** workflows dominated by many tiny sequential tool calls or requiring native-backend behavior to be identical.
+
+## Upstream strengths, focused improvements
+
+The upstream project supplies the core capability: a cross-platform desktop launcher, embedded ChatGPT sign-in, Web reasoning routes, streaming back to Codex, and Full-mode tools through MCP. This fork builds on that work.
+
+| Area | Upstream v5.0.6 baseline | This preview adds |
+|---|---|---|
+| Local tool workflow | Codex task tools connected through MCP | Additional recursion checks across discovery, dispatch and nested execution |
+| Model routing | Launcher-managed model integration | Explicit Web profile support and a separate model catalog |
+| Long conversations | Existing compaction and task continuation | Codex 0.154 Responses-based text compaction recovery |
+| Context transport | Task-bound retained conversations | Omission of unchanged static instructions and confirmed history prefixes |
+| Failure handling | Browser and bridge lifecycle management | Pre-stream environment rejection and explicit cancellation-settlement checks |
+| Teacher coordination | Fixed 30-second Web waits | A bounded 55-second option for evidence-only teachers, keeping 30-second worker waits |
+
+These are implementation differences against the recorded upstream base, not a claim that every upstream workflow fails or that this fork is universally faster. [Changes and provenance](docs/CHANGES.md) · [Validation](docs/VALIDATION.md).
+
+## How it fits together
+
+![Explicit native and Web routes](assets/readme/workflow.svg)
+
+<details>
+<summary><strong>See the inherited launcher interface</strong></summary>
+
+![Launcher interface demonstration from the upstream project](assets/demo.gif)
+
+Upstream interface demonstration, included with attribution. This is not a recording of the fork's new compaction or latency tests; current behavior and limits are documented below.
+
+</details>
 
 ## Get started
 

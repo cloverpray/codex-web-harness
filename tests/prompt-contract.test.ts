@@ -282,7 +282,8 @@ test("Bigger Context compaction preserves history above the retired inline byte 
   for (let index = 1; index <= 6; index += 1) {
     expect(staged).toContain(`multipart-history-${index}-`);
   }
-});
+// Large fixture tokenization needs more than Bun's default 5s on hosted Windows.
+}, 20_000);
 
 test("Bigger Context minimizes the largest ordered stage instead of overfilling a middle part", () => {
   const compact = request("high");
