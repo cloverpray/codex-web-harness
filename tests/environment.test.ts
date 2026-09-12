@@ -935,6 +935,46 @@ describe("trusted Codex task environment continuity", () => {
     expect(() => store.resolve(request)).toThrow("no current task boundary");
   });
 
+  for (const tagged of [false, true]) test(`midnight date delta authenticates native current-turn provenance (wire tagged: ${tagged})`, () => {
+    const { codexHome, request, rolloutPath } = resumedRootFixture();
+    const body = request._rawBody as { client_metadata: Record<string, string>; input: Array<Record<string, unknown>> };
+    const metadata = JSON.parse(body.client_metadata["x-codex-turn-metadata"]!);
+    delete metadata.workspaces;
+    body.client_metadata["x-codex-turn-metadata"] = JSON.stringify(metadata);
+    const native = {
+      type: "message", role: "user", id: "msg_midnight_delta",
+      content: [{ type: "input_text", text: `<environment_context>
+  <current_date>2026-09-13</current_date>
+  <timezone>Asia/Shanghai</timezone>
+  <filesystem><workspace_roots><root>${root}</root></workspace_roots>${dangerFullAccessProfileXml}</filesystem>
+</environment_context>` }],
+      internal_chat_message_metadata_passthrough: { turn_id: rolloutTurnId, content_item_kinds: ["environments.environment_context"] },
+    };
+    const wire: Record<string, unknown> = structuredClone(native);
+    if (!tagged) delete wire.internal_chat_message_metadata_passthrough;
+    body.input.push(wire);
+    const session = { type: "session_meta", payload: { id: rolloutThreadId, source: "cli" } };
+    const boundary = { type: "event_msg", payload: { type: "task_started", turn_id: rolloutTurnId } };
+    const world = { type: "world_state", payload: { full: false, state: { environments: { current_date: "2026-09-13" } } } };
+    const write = (message: unknown, state: unknown = world) => writeFileSync(rolloutPath,
+      [session, boundary, childTurnContext(), {type:"response_item",payload:message}, state].map(x => JSON.stringify(x)).join("\n") + "\n");
+    write(native);
+    const store = new ChatGptThreadEnvironmentStore(undefined, Date.now, codexHome);
+    expect(store.resolve(request).cwd).toBe(root);
+    expect(store.resolve(request).sandboxPolicy.type).toBe("dangerFullAccess");
+    write({...native, internal_chat_message_metadata_passthrough: {turn_id: rolloutTurnId, content_item_kinds:["user_input"]}});
+    expect(() => store.resolve(request)).toThrow("does not authenticate");
+    write({...native, internal_chat_message_metadata_passthrough: {...native.internal_chat_message_metadata_passthrough, turn_id: rolloutParentId}});
+    expect(() => store.resolve(request)).toThrow("does not authenticate");
+    write(native, {type:"world_state",payload:{full:false,state:{environments:{current_date:"2026-09-14"}}}});
+    expect(() => store.resolve(request)).toThrow("date-only world-state");
+    write(native, {type:"world_state",payload:{full:false,state:{environments:{current_date:"2026-09-13",cwd:"/other"}}}});
+    expect(() => store.resolve(request)).toThrow("date-only world-state");
+    write(native);
+    (wire.content as Array<{text:string}>)[0]!.text = native.content[0]!.text.replace("2026-09-13", "2026-09-14");
+    expect(() => store.resolve(request)).toThrow("differs from its native Codex record");
+  });
+
   test("unchanged tool rounds coalesce environment persistence but permission changes persist immediately", () => {
     const directory = mkdtempSync(join(tmpdir(), "codex-environment-persistence-"));
     temporaryRoots.push(directory);

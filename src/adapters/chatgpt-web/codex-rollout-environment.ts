@@ -1,3 +1,4 @@
+import { chatGptCalendarDeltaDate } from "./environment";
 import { Database } from "bun:sqlite";
 import {
   closeSync,
@@ -243,6 +244,8 @@ function verifyHistoricalEnvironmentMessages(
 ): void {
   const pending = new Map(messages.map(message => [message.id, message.content]));
   if (pending.size !== messages.length) throw new Error("Codex environment history repeats a message id");
+  let currentBoundary = false;
+  let calendar: { id: string; date: string } | undefined;
   let position = 0;
   let carry = Buffer.alloc(0);
   while (position < size) {
@@ -261,22 +264,44 @@ function verifyHistoricalEnvironmentMessages(
       if (line.length > MAX_ROLLOUT_JSON_LINE_BYTES) throw new Error("Codex rollout JSONL record exceeds the bounded record size");
       const item = parseJsonLine(line);
       const payload = record(item.payload);
-      // Core writes task_started before this turn's environment update. Merely finding matching
-      // XML somewhere in the file would also accept a current update as historical.
+      // A native calendar delta is immediately followed by its date-only world-state change.
+      // Neither matching XML nor request-side provenance alone can authenticate a current update.
+      if (calendar) {
+        if (item.type !== "world_state" || payload?.full !== false
+          || !isDeepStrictEqual(payload.state, { environments: { current_date: calendar.date } })) {
+          throw new Error("Current environment message lacks its native date-only world-state update");
+        }
+        pending.delete(calendar.id);
+        calendar = undefined;
+        if (pending.size === 0) return;
+        continue;
+      }
       if (item.type === "event_msg" && payload?.type === "task_started" && payload.turn_id === turnId) {
         if (pending.size === 0) return;
-        throw new Error("Codex rollout does not authenticate the historical environment messages");
+        currentBoundary = true;
+        continue;
       }
       if (item.type !== "response_item" || payload?.type !== "message" || payload.role !== "user"
         || typeof payload.id !== "string" || !pending.has(payload.id)) continue;
       if (!isDeepStrictEqual(payload.content, pending.get(payload.id))) {
         throw new Error("Historical environment message differs from its native Codex record");
       }
-      pending.delete(payload.id);
+      if (currentBoundary) {
+        const native = record(payload.internal_chat_message_metadata_passthrough);
+        const date = chatGptCalendarDeltaDate(payload.content);
+        if (!date || native?.turn_id !== turnId
+          || !isDeepStrictEqual(native.content_item_kinds, ["environments.environment_context"])) {
+          throw new Error("Codex rollout does not authenticate the historical environment messages");
+        }
+        calendar = { id: payload.id, date };
+      } else {
+        pending.delete(payload.id);
+      }
     }
     carry = Buffer.from(data.subarray(start));
     if (carry.length > MAX_ROLLOUT_JSON_LINE_BYTES) throw new Error("Codex rollout JSONL record exceeds the bounded record size");
   }
+  if (currentBoundary) throw new Error("Codex rollout does not authenticate the historical environment messages");
   throw new Error("Codex rollout has no current task boundary for environment history");
 }
 

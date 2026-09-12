@@ -159,7 +159,8 @@ export class ChatGptThreadEnvironmentStore {
       const currentCompaction = hasCurrentContext && isChatGptCompactionContinuation(parsed);
       // Paginated root history can also replay an untagged old environment without intervening
       // assistant items. Authenticate the exact message before this turn's native task boundary,
-      // just as for inherited child history; never use the replayed XML itself as authority.
+      // just as for inherited child history. Native date-only deltas after that boundary require
+      // exact item provenance and a matching world_state. XML never supplies authority here.
       const historicalMessages = hasCurrentContext && !currentCompaction
         ? unattributedChatGptEnvironmentMessages(parsed) : undefined;
       if (hasCurrentContext && !currentCompaction && !historicalMessages) throw error;

@@ -35,3 +35,9 @@ Codex 0.154 `hooks/list` confirmed the installed teacher command as enabled and 
 The locally staged Linux installer reuses the existing matching Electron/AppImage runtime; native GitHub Actions builds obtain platform dependencies independently. Alpha.1 cross-platform results above do not establish Alpha.2 cross-platform success; consult its own Actions run.
 
 The local Alpha.2 Linux AppImage passed symbol checks and an isolated desktop launch/install smoke test (`ok=true`, `packaged=true`, `runtimeVerified=true`, version `5.0.7-alpha.2`). This machine used its existing X display because xvfb-run was unavailable. An initial local repack with absolute symlinks was rejected; the accepted repack preserves relative symlinks and passed bundle validation. The existing running launcher was not restarted.
+
+## Alpha.3 calendar rollover (2026-09-13)
+
+A real native rollout reproduced Alpha.2's rejection of a midnight calendar delta; replay through the fixed resolver recovered the same cwd and sandbox from native turn_context. No model call or research experiment was replayed. Synthetic regressions cover tagged and untagged wire messages, altered content, incorrect native provenance, mismatched dates and non-calendar world-state changes.
+
+Local `bun run verify` passed: **722 runtime tests, 1 platform skip; 297 launcher tests**, dependency audits, type checking, renderer build and relocatable-runtime smoke. The authenticated date-only exception does not derive filesystem authority from request XML. Alpha.3 cross-platform package results must be checked in its own CI run.

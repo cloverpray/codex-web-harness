@@ -137,6 +137,14 @@ export interface ChatGptUnattributedEnvironmentMessage {
   content: unknown;
 }
 
+/** Calendar deltas are claims only; native item provenance and world_state must authenticate them. */
+export function chatGptCalendarDeltaDate(content: unknown): string | undefined {
+  if (!Array.isArray(content) || content.length !== 1) return undefined;
+  const part = record(content[0]);
+  if (part?.type !== "input_text" || typeof part.text !== "string") return undefined;
+  return /^<environment_context>\s*<current_date>(\d{4}-\d{2}-\d{2})<\/current_date>\s*(?:<timezone>[^<]+<\/timezone>\s*)?(?:<filesystem>[\s\S]*<\/filesystem>\s*)?<\/environment_context>$/.exec(part.text.trim())?.[1];
+}
+
 /** These are claims to locate in native history, never a source of filesystem authority. */
 export function unattributedChatGptEnvironmentMessages(
   parsed: CodexParsedRequest,
@@ -148,11 +156,11 @@ export function unattributedChatGptEnvironmentMessages(
   for (const value of input) {
     const item = record(value);
     if (item?.type !== "message" || !/<\/?environment_context\b/i.test(rawMessageText(item))) continue;
-    // Explicit current provenance must keep the normal current-update rejection. A native item
-    // without provenance is historical only if the canonical rollout proves that exact message.
+    // Normal current updates retain their rejection path. Calendar deltas may be checked
+    // against native provenance + date-only world_state; wire metadata alone grants nothing.
     const owner = itemTurnId(item);
     if (owner !== undefined && owner !== currentTurnId) continue;
-    if (owner !== undefined || item.role !== "user"
+    if ((owner !== undefined && !chatGptCalendarDeltaDate(item.content)) || item.role !== "user"
       || typeof item.id !== "string" || !item.id) return undefined;
     messages.push({ id: item.id, content: item.content });
   }

@@ -34,3 +34,9 @@ Release dependency refresh: Hono 4.13.5 and js-yaml 4.3.2 are pinned to address 
 - The optional native teacher hook protects pending teacher handles from agent-driven interruption and permits cleanup of completed/aborted handles. Poll timeout is not failure. Legacy incorrectly typed teacher handles can be explicitly protected in machine-local hook state.
 - Thread-capacity recovery preserves the role: collect completed results, close unused terminal handles, or keep the packet pending. No automatic experiment resubmission, role fallback or forced cancellation.
 - Public connector schema remains unchanged to avoid invalidating existing cached connector identities. The output bound is enforced at invocation time.
+
+## Alpha.3 — calendar rollover during an active turn
+
+Codex can emit a date-only environment delta at local midnight after `task_started`, without a new cwd and without wire-level turn attribution. The earlier history verifier rejected it because it only admitted environment messages preceding that boundary. The bridge now accepts this narrow case only when the canonical rollout proves the exact message ID/content, marks it as this turn's native `environments.environment_context`, and immediately records a matching date-only `world_state`. Filesystem authority still comes from the current native `turn_context`; changed content, wrong provenance and non-date state mutations remain rejected.
+
+修复跨午夜时当前 turn 的日期增量被误判为历史环境的故障；不关闭环境验证、不放宽目录或权限。回归覆盖有/无 wire turn 标记、内容篡改、错误来源、日期不匹配及混入目录更新。
