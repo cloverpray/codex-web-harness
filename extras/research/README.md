@@ -29,3 +29,13 @@ Do not assume copying the TOML enforces read-only permissions. Configure a **glo
 不要假设复制 TOML 就形成只读边界。按目标 CLI 的钩子 schema 配置全局 PreToolUse，使用目标机器已验证 Python 和脚本的绝对路径，保留其他钩子，并完成原生信任流程。不要复制别处的解释器路径或信任哈希。
 
 Before using the role, test that ordinary main-agent tools still work and teacher exec/patch/goal/delegation attempts cannot execute. Test with disposable fixtures, not live research. If hooks do not enforce the boundary, leave the optional role disabled.
+
+### Teacher dispatch hardening
+
+The native PreToolUse helper now requires explicit roles for Web Pro subagents and rejects full-history Pro fallback, keeps `pro_teacher` model/effort role-owned, and enforces a 16000-byte evidence packet. It blocks agent-driven interruption of pending teachers; finished/aborted handles can be closed after collecting their result. Explicit cancellation remains available through the native user interface. `wait_agent` timeout is only a polling result.
+
+For migrating a previously misconfigured generic teacher, a local `$CODEX_HOME/hooks/teacher-protected-handles.json` may list its exact session UUID. This file is machine-local state: do not publish it. The helper also denies tools from those listed sessions. New correctly typed teacher sessions are recognized using native role metadata. Hook integration must be validated on the target Codex version; changing a script does not demonstrate that an already-running process reloaded its hook configuration.
+
+教师角色失败或线程满时不得降级；先收集完成结果、关闭不用的已完成句柄，或保存待提交证据包。55 秒等待超时不授权中断。主执行者保持唯一研究状态写入权。上述规则与研究方向无关。
+
+For an already-running Web executor, `hooks/web-bounded-output-handles.json` may list exact session UUIDs to reject native command output requests above 8000 tokens immediately. Native sessions outside this local list are unchanged. New Web bridge dispatch enforces the bound independently of that migration list. Do not publish either local handle file.

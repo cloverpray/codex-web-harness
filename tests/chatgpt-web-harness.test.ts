@@ -2777,7 +2777,7 @@ describe("ChatGPT outer-native harness v4", () => {
         max_output_tokens: 1_234,
         tty: true,
       })))).toBe(true);
-      expect(execRequests.some(request => request.input?.includes(JSON.stringify({ cmd: "git status --short", workdir: tempRoot })))).toBe(true);
+      expect(execRequests.some(request => request.input?.includes(JSON.stringify({ cmd: "git status --short", workdir: tempRoot, max_output_tokens: 8000 })))).toBe(true);
       for (const request of execRequests) {
         expect(request.input).toContain("ALL_TOOLS");
         expect(request.input).toContain('"exec_command"');
@@ -3275,6 +3275,9 @@ describe("ChatGPT outer-native harness v4", () => {
       expect(invalid.isError).toBe(true);
       expect(JSON.stringify(invalid.content)).toContain("turn token is invalid, expired, or revoked");
 
+      const oversizedOutput = await call("codex_exec", { turn_token: token, cmd: "pwd", max_output_tokens: 28000 });
+      expect(oversizedOutput.isError).toBe(true);
+      expect(JSON.stringify(oversizedOutput.content)).toContain("8000");
       const execPromise = call("codex_exec", { turn_token: token, cmd: "pwd", workdir: tempRoot });
       const [execRequest] = await Promise.race([
         broker.nextToolBatch(token),
@@ -3286,7 +3289,7 @@ describe("ChatGPT outer-native harness v4", () => {
       expect(execRequest?.input).toContain("ALL_TOOLS");
       expect(execRequest?.input).toContain('"exec_command"');
       expect(execRequest?.input).toContain('"shell_command"');
-      expect(execRequest?.input).toContain(JSON.stringify({ cmd: "pwd", workdir: tempRoot }));
+      expect(execRequest?.input).toContain(JSON.stringify({ cmd: "pwd", workdir: tempRoot, max_output_tokens: 8000 }));
       broker.completeTool(token, execRequest!.callId, toolResult({ output: tempRoot, exit_code: 0 }));
       expect((await execPromise).structuredContent).toEqual({ output: tempRoot, exit_code: 0 });
     } finally {

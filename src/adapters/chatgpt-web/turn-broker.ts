@@ -1,3 +1,4 @@
+import { assertWebAgentToolArguments } from "./agent-tool-policy";
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
@@ -1124,6 +1125,14 @@ export class TurnBroker implements TurnBrokerOwner {
       };
       console.warn(`[chatgpt-web] broker trace=${binding.channel.traceId} rejected recursive bridge dispatch`);
       return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: true };
+    }
+    if (request.freeform !== true) {
+      try {
+        assertWebAgentToolArguments(wireName, request.arguments ?? (request.arguments = {}));
+      } catch (error) {
+        const result = { code: "web_tool_argument_policy", message: error instanceof Error ? error.message : String(error), retryable: false, turn_active: true };
+        return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: true };
+      }
     }
     const callId = opaqueId("call");
     const toolRequest: BrokerToolRequest = {

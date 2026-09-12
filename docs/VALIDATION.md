@@ -25,3 +25,11 @@ The clean checkout installed locked JS dependencies. Its Electron binary downloa
 [CI run 34698239624](https://github.com/cloverpray/codex-web-harness/actions/runs/34698239624) passed all five jobs: actionlint and native verification/package/smoke jobs for Linux x64, Windows x64, macOS arm64 and macOS x64. Verified source: `cad429a00b356466ed5ed1d93d3ff235d05e6fc2`. Later documentation and artwork commits do not change the installer build identity.
 
 四个平台及 actionlint 均已通过。发布流程复用该次 CI 的安装包，核验源码身份和 SHA-256 后发布，不重新打包。后续文档和配图改动不会改变这些安装包对应的源码 commit。Windows/macOS 真实账户测试仍待补充。
+
+## Alpha.2 teacher hardening (2026-09-12)
+
+Local `bun run verify` passed: **720 runtime tests passed, 1 platform skip; 297 launcher tests passed**. Dependency audits, type checking, renderer build and relocatable-runtime smoke passed. Optional research helpers passed **11 Python tests**, including teacher role/fork validation, UTF-8 packet limits, pending/terminal cancellation handling and session-scoped output limits. Existing public MCP connector ABI remains unchanged.
+
+Codex 0.154 `hooks/list` confirmed the installed teacher command as enabled and trusted. This verifies hook discovery/trust, not a full live-model permissions audit. The local native hook update does not require replacing the active browser process; the new bridge code requires launching the updated app. No running research process was restarted by this repair.
+
+The locally staged Linux installer reuses the existing matching Electron/AppImage runtime; native GitHub Actions builds obtain platform dependencies independently. Alpha.1 cross-platform results above do not establish Alpha.2 cross-platform success; consult its own Actions run.

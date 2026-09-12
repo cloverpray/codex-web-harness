@@ -368,3 +368,21 @@ test("turn broker names the finished turn that owns a replayed handle", async ()
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('broker rejects teacher fallback before queueing and keeps the binding usable', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cgw-agent-guard-'));
+  const socketPath = defaultBrokerEndpoint(root);
+  const broker = TurnBroker.forSocket(socketPath);
+  try {
+    const token = await broker.register({cwd:root,roots:[root],writableRoots:[root],sandboxPolicy:{type:'dangerFullAccess'},tools:[]},60_000,'guard-test');
+    const {bindingId} = await callTurnBroker<{bindingId:string}>(socketPath,{method:'claim',token});
+    const rejected = await callTurnBroker<any>(socketPath,{method:'invoke',bindingId,wireName:'multi_agent_v1__spawn_agent',arguments:{fork_context:true,model:'chatgpt-web/pro'}});
+    expect(rejected.isError).toBe(true);
+    expect(rejected.structuredContent.message).toContain('Full-history');
+    expect(rejected.structuredContent.turn_active).toBe(true);
+    const oversized = await callTurnBroker<any>(socketPath,{method:'invoke',bindingId,wireName:'exec_command',arguments:{cmd:'rg anything',max_output_tokens:28000}});
+    expect(oversized.structuredContent.message).toContain('8000');
+    const result = await callTurnBroker<{environment: {cwd:string}}>(socketPath,{method:'resolve',bindingId});
+    expect(result.environment.cwd).toBe(root);
+  } finally { await broker.close(); rmSync(root,{recursive:true,force:true}); }
+});

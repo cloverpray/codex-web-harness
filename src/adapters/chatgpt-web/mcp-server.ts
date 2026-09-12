@@ -1,3 +1,4 @@
+import { assertWebAgentToolArguments, webAgentToolGuardProgram } from "./agent-tool-policy";
 import { createHash, randomBytes } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -53,7 +54,7 @@ const jsonArgumentsSchema = z.record(z.string(), z.unknown()).default({});
 // Match Codex's default wait interval while returning before the MCP invocation deadline.
 export const CHATGPT_WEB_AGENT_WAIT_POLL_MS = 30_000;
 export const CHATGPT_WEB_TEACHER_WAIT_MS = 55_000;
-const AGENT_WAIT_TRANSPORT_RULE = "ChatGPT Web transport rule: use timeout_ms=55000 when waiting only for an evidence-only teacher that cannot call tools; use timeout_ms=30000 for tool-capable workers to release the shared MCP channel more often. Both waits return early when native completion is reported. Keep native arguments unchanged. A timeout is not failure: retain the same agent handle, do independent work when available, then wait again. Do not loop multiple waits inside one exec invocation.";
+const AGENT_WAIT_TRANSPORT_RULE = "ChatGPT Web transport rule: use timeout_ms=55000 when waiting only for an evidence-only teacher that cannot call tools; use timeout_ms=30000 for tool-capable workers to release the shared MCP channel more often. Both waits return early when native completion is reported. Keep native arguments unchanged. A timeout is not failure and does not authorize interrupt=true, closing a running agent, or spawning a replacement. Retain the same agent handle, do independent work when available, then wait again. Do not loop multiple waits inside one exec invocation.";
 // The OpenAI tunnel currently owns a two-minute command-response deadline. The local MCP server
 // must settle first so an abandoned native tool call is returned as an MCP error instead of
 // letting the tunnel tear down and poison its long-lived stdio transport.
@@ -203,6 +204,7 @@ function browserToolParameters(tool: CodexTool): Record<string, unknown> {
 }
 
 function assertBrowserToolArguments(tool: CodexTool, args: Record<string, unknown>): void {
+  assertWebAgentToolArguments(wireName(tool), args);
   if (!isAgentWaitTool(tool)) return;
   if (args.timeout_ms !== CHATGPT_WEB_AGENT_WAIT_POLL_MS && args.timeout_ms !== CHATGPT_WEB_TEACHER_WAIT_MS) {
     throw new Error(
@@ -213,6 +215,7 @@ function assertBrowserToolArguments(tool: CodexTool, args: Record<string, unknow
 }
 
 function assertGatewayToolArguments(name: string, args: Record<string, unknown>): void {
+  assertWebAgentToolArguments(name, args);
   if (!isGatewayAgentWaitTool(name)) return;
   if (args.timeout_ms !== CHATGPT_WEB_AGENT_WAIT_POLL_MS && args.timeout_ms !== CHATGPT_WEB_TEACHER_WAIT_MS) {
     throw new Error(
@@ -397,6 +400,7 @@ function transportBoundRawExecProgram(input: string, blockedExecName: string): s
     input,
     "})((() => {",
     `  ${chatGptBridgeToolGuardProgram()}`,
+    `  ${webAgentToolGuardProgram()}`,
     "  const source = tools;",
     `  const waitNames = new Set(${JSON.stringify([...GATEWAY_AGENT_WAIT_TOOL_NAMES])});`,
     `  const blockedExecName = ${JSON.stringify(blockedExecName)};`,
@@ -423,7 +427,7 @@ function transportBoundRawExecProgram(input: string, blockedExecName: string): s
     "        return Reflect.apply(value, source, [args]);",
     "      };",
     "    } else if (typeof value === \"function\") {",
-    "      exposed = (...args) => Reflect.apply(value, source, args);",
+    "      exposed = (...args) => { assertWebAgentToolArguments(String(name), args[0] ?? {}); return Reflect.apply(value, source, args); };",
     "    }",
     "    wrappers.set(name, exposed);",
     "    return exposed;",
@@ -575,6 +579,7 @@ export async function runChatGptMcpServer(options: {
     signal?: AbortSignal,
   ) => {
     assertNotChatGptBridgeTool(wireName(tool));
+    if (!tool.freeform) assertWebAgentToolArguments(wireName(tool), payload.arguments ?? (payload.arguments = {}));
     const timeoutMs = chatGptMcpInvocationTimeout(bound);
     try {
       const response = await callTurnBroker<BrokerToolResult>(options.brokerSocketPath, {
@@ -748,6 +753,7 @@ export async function runChatGptMcpServer(options: {
           ...(max_output_tokens !== undefined ? { max_output_tokens } : {}),
           ...(tty !== undefined ? { tty } : {}),
         };
+        assertWebAgentToolArguments("exec_command", execCommandArguments);
         const shellCommandArguments = {
           command: cmd,
           ...(workdir ? { workdir } : {}),
