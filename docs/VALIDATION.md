@@ -1,0 +1,21 @@
+# Validation / 验证
+
+Status: **alpha / preview**. The fork's authenticated manual coverage is Linux x64 with Codex 0.154. Windows and macOS authenticated account flows remain unverified for these changes.
+
+Historical pre-extraction checks: runtime suite 716 passed, 1 platform skip; read-only snapshot suite 6 passed; runtime type checking and installation-file hashes passed. Long-history browser compaction, subsequent reply and resume completed. No paired native/Web quality or speed benchmark has been performed.
+
+发行源码整理前：716项运行时测试通过、1项平台跳过；只读采集器6项通过；类型检查与安装文件校验通过。Linux 长会话压缩、继续回复、再次恢复已实测。这些不是原生/Web 同任务性能或研究质量对照。
+
+Fresh-source validation and platform package results are reported in GitHub Actions. Each package artifact includes the source commit and runtime bundle identity in BUILD_INFO.json. Check the actual run result; this page does not predeclare CI success.
+
+当前发行源码及各平台安装包以 Actions 的实际结果为准，产物附源码 commit 和运行时 bundle 身份。本文不预先宣称 CI 已通过。
+
+Before marking a stable release, complete the authenticated checks in [release-validation.md](release-validation.md) on each supported platform. Historical upstream validation in that file is not evidence that this fork has passed those flows.
+
+## Fresh source checks (2026-09-12)
+
+After updating the pinned Hono/js-yaml dependencies, `bun run verify` passed locally: 716 runtime tests passed, 1 platform skip; 297 launcher tests passed; both dependency audits, type checks, renderer build, license generation and relocatable runtime smoke passed. The optional snapshot tests passed 6/6.
+
+The clean checkout installed locked JS dependencies. Its Electron binary download stalled on the local network; local validation used the already-verified matching Electron distribution via ELECTRON_OVERRIDE_DIST_PATH. Hosted CI must download its own platform binaries and build the installers. This local result does not predeclare hosted packaging success.
+
+更新 Hono/js-yaml 锁定依赖后，本地 verify 全部通过：运行时716通过/1跳过，启动器297通过，依赖审计、类型检查、构建、许可证生成与运行时搬迁冒烟通过，可选快照6项通过。本机 Electron 二进制下载曾停滞，本地验证使用已有同版本发行文件；托管 CI 仍需自行下载并打包各平台，不能用本地结果替代。

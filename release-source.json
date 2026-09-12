@@ -1,0 +1,20 @@
+{
+  "repository": "cloverpray/codex-web-harness",
+  "upstream": "https://github.com/miuuyy/codex-chatgpt-web",
+  "base_commit": "e85e3693fdb4e3e033348c08df0298c20fcdb612",
+  "configuration_files": [
+    "README.ja.md",
+    "README.zh-CN.md",
+    "package.json",
+    "TROUBLESHOOTING.md",
+    "README.md",
+    "scripts/install-launcher.ps1",
+    "scripts/install.sh",
+    "scripts/install-launcher.sh",
+    ".github/ISSUE_TEMPLATE/bug-report.yml",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    "launcher/electron/main.cjs",
+    "launcher/electron/update.cjs",
+    "launcher/tests/update.test.cjs"
+  ]
+}
