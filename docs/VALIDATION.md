@@ -33,3 +33,5 @@ Local `bun run verify` passed: **720 runtime tests passed, 1 platform skip; 297 
 Codex 0.154 `hooks/list` confirmed the installed teacher command as enabled and trusted. This verifies hook discovery/trust, not a full live-model permissions audit. The local native hook update does not require replacing the active browser process; the new bridge code requires launching the updated app. No running research process was restarted by this repair.
 
 The locally staged Linux installer reuses the existing matching Electron/AppImage runtime; native GitHub Actions builds obtain platform dependencies independently. Alpha.1 cross-platform results above do not establish Alpha.2 cross-platform success; consult its own Actions run.
+
+The local Alpha.2 Linux AppImage passed symbol checks and an isolated desktop launch/install smoke test (`ok=true`, `packaged=true`, `runtimeVerified=true`, version `5.0.7-alpha.2`). This machine used its existing X display because xvfb-run was unavailable. An initial local repack with absolute symlinks was rejected; the accepted repack preserves relative symlinks and passed bundle validation. The existing running launcher was not restarted.
