@@ -2992,7 +2992,9 @@ test("Bigger Context fits mixed-density whole records within both token and comp
       { stagingEffort: stagingMode.effort, maxStageMessageTokens, maxStageChars, finalMessageTokens, finalMessageChars: final.length },
     )).not.toThrow();
   }
-}, 20_000);
+// Tokenization of the large fixture exceeded 20s on the hosted Intel macOS runner.
+// This checks record boundaries, not a latency SLA; keep all size/content assertions.
+}, 45_000);
 
 test("Bigger Context preflight expands only the total context ceiling and keeps each message boundary", () => {
   const plus = {
