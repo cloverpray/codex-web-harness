@@ -86,11 +86,11 @@ jobs:
               for file in sorted(output.iterdir()):
                   if file.name != 'checksums.txt': f.write(hashlib.sha256(file.read_bytes()).hexdigest() + '  ' + file.name + '\n')
           repo = os.environ['GITHUB_REPOSITORY']
-          notes = f'''First public preview / 首个公开预览版
+          notes = f'''Output previews and bridge reliability / 输出预览与桥接稳定性更新
 
-          Opt-in Web profiles, Codex 0.154 text-compaction recovery, retained context, recursion protection and optional research helpers. See the bilingual README for setup and the upstream attribution.
+          Large successful command outputs now use recoverable previews, with bounded token-count caching and separate context/submission metrics. Includes turn identity recovery, durable failure diagnostics and failed-prerequisite handling. See docs/CONTEXT_OUTPUTS.md for behavior and limits.
 
-          提供显式 Web profile、长会话恢复、上下文复用、递归保护及可选研究组件。安装与使用请看中英文 README；仅安装应用不会自动建立 Web profile。
+          大段成功输出以短预览和可读取的完整结果文件返回；新增有界 token 计数缓存和上下文指标，包含会话身份恢复、持久错误诊断及失败前置步骤保护。原始错误与运行中句柄保留。详见 docs/CONTEXT_OUTPUTS.zh-CN.md。
 
           All four platform packages passed CI build/smoke checks. Authenticated manual coverage for this fork remains Linux; Windows/macOS still need real-account validation. No native-Codex speed or quality parity is claimed. Windows packages are unsigned; macOS signatures do not imply notarization. Experimental MCP batching stays disabled.
 

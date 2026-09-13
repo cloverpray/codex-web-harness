@@ -22,7 +22,12 @@ test("large output is recoverable, versioned, and immutable without rerunning ex
 });
 test("errors, running handles, foreign tools, and storage failure preserve original output", () => {
  for (const m of [message(raw.replace('code 0','code 1')), message(raw.replace('Process exited with code 0','Process running with session ID 123')), {...message(),isError:true}, {...message(),toolNamespace:'third_party'}]) expect(compactCommandOutput(m)).toEqual(m);
- expect(compactCommandOutput(message(), '/dev/null/unwritable')).toEqual(message());
+ const dir = mkdtempSync(join(tmpdir(), "output-artifact-storage-failure-"));
+ try {
+  const file = join(dir, "not-a-directory");
+  writeFileSync(file, "fixture");
+  expect(compactCommandOutput(message(), join(file, "unwritable"))).toEqual(message());
+ } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 // Test the two model-facing paths against one artifact while keeping the source message intact.
