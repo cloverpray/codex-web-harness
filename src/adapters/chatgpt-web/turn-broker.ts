@@ -1,4 +1,5 @@
 import { assertWebAgentToolArguments } from "./agent-tool-policy";
+import { chatGptToolOutcome } from "./failure-diagnostics";
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
@@ -432,6 +433,10 @@ export class TurnBroker implements TurnBrokerOwner {
     }
     channel.invocations.delete(callId);
     console.info(`[chatgpt-web] broker trace=${channel.traceId} completed call=${callId.slice(0, 17)} pending=${channel.invocations.size}`);
+    console.info(`[chatgpt-web] tool_outcome ${JSON.stringify({
+      traceId: channel.traceId, callId, tool: invocation.request.wireName,
+      ...chatGptToolOutcome(result),
+    })}`);
     invocation.resolve(result);
   }
 
@@ -1124,6 +1129,10 @@ export class TurnBroker implements TurnBrokerOwner {
         turn_active: true,
       };
       console.warn(`[chatgpt-web] broker trace=${binding.channel.traceId} rejected recursive bridge dispatch`);
+      console.warn(`[chatgpt-web] tool_rejection ${JSON.stringify({
+        traceId: binding.channel.traceId, origin: "broker_guard", tool: wireName,
+        code: result.code, dispatched: false, turnActive: true,
+      })}`);
       return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: true };
     }
     if (request.freeform !== true) {
@@ -1131,6 +1140,10 @@ export class TurnBroker implements TurnBrokerOwner {
         assertWebAgentToolArguments(wireName, request.arguments ?? (request.arguments = {}));
       } catch (error) {
         const result = { code: "web_tool_argument_policy", message: error instanceof Error ? error.message : String(error), retryable: false, turn_active: true };
+        console.warn(`[chatgpt-web] tool_rejection ${JSON.stringify({
+          traceId: binding.channel.traceId, origin: "broker_guard", tool: wireName,
+          code: result.code, dispatched: false, turnActive: true,
+        })}`);
         return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: true };
       }
     }

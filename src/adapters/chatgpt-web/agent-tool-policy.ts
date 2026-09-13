@@ -25,7 +25,10 @@ export function assertWebAgentToolArguments(name: string, args: Record<string, u
   if (matches("exec_command") || matches("write_stdin")) {
     if (args.max_output_tokens === undefined) args.max_output_tokens = 8000;
     if (typeof args.max_output_tokens === "number" && args.max_output_tokens > 8000) {
-      throw new Error("Web command output is limited to 8000 tokens per call. Save full output to an artifact and return selected keys or bounded excerpts; narrow a truncated search instead of expanding it.");
+      if (!Number.isFinite(args.max_output_tokens)) throw new Error("Web command output budget must be finite.");
+      // This is a transport budget, not an authorization decision. Tighten the
+      // output bound without preventing an otherwise permitted command from running.
+      args.max_output_tokens = 8000;
     }
   }
 }

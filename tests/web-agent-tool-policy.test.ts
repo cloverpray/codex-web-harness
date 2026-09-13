@@ -20,7 +20,14 @@ test('bounded shell output in direct and generated raw exec guard', () => {
   const raw = new Function(webAgentToolGuardProgram() + '; return assertWebAgentToolArguments;')();
   for (const fn of [guard, raw]) {
     fn('exec_command',{cmd:'rg --files',max_output_tokens:8000});
-    expect(() => fn('exec_command',{max_output_tokens:28000})).toThrow('8000');
+    for (const tool of ['exec_command', 'write_stdin']) {
+      const args = {cmd:'pwd',max_output_tokens:28000};
+      fn(tool,args);
+      expect(args).toEqual({cmd:'pwd',max_output_tokens:8000});
+      const bounded = {max_output_tokens:100}; fn(tool,bounded);
+      expect(bounded.max_output_tokens).toBe(100);
+    }
+    expect(() => fn('exec_command',{max_output_tokens:Infinity})).toThrow('finite');
     expect(() => fn('spawn_agent',{fork_context:true,model:'chatgpt-web/pro'})).toThrow();
   }
 });

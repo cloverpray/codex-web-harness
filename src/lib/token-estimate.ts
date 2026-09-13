@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { get_encoding, type Tiktoken } from "tiktoken";
 
 /**
@@ -9,6 +10,8 @@ import { get_encoding, type Tiktoken } from "tiktoken";
 
 const TOKENIZER_CHUNK_CHARS = 4_096;
 let tokenizer: Tiktoken | undefined;
+// Hash-keyed bounded cache: never retain task text, credentials, or unbounded history.
+const tokenCounts = new Map<string, number>();
 
 function chatGptTokenizer(): Tiktoken {
   tokenizer ??= get_encoding("o200k_base");
@@ -24,6 +27,9 @@ export function estimateTokens(text: string, modelId?: string): number {
   void modelId;
   if (!text) return 0;
 
+  const key = createHash("sha256").update(text).digest("hex");
+  const cached = tokenCounts.get(key);
+  if (cached !== undefined) return cached;
   const encoding = chatGptTokenizer();
   let count = 0;
   for (let start = 0; start < text.length;) {
@@ -38,5 +44,7 @@ export function estimateTokens(text: string, modelId?: string): number {
     count += encoding.encode_ordinary(text.slice(start, end)).length;
     start = end;
   }
+  if (tokenCounts.size >= 2048) tokenCounts.delete(tokenCounts.keys().next().value!);
+  tokenCounts.set(key, count);
   return count;
 }

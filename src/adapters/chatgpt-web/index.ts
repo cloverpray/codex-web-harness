@@ -1,3 +1,5 @@
+import { compiledChatGptWebMessages } from "./input-tokens";
+import { compactCommandOutput } from "./output-artifacts";
 import { createHash, randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { isChatGptWebZeroRiskBackendModel } from "../../chatgpt-web-models";
@@ -21,6 +23,8 @@ import { namespacedToolName, type AdapterEvent, type CodexContentPart, type Code
 import type { ProviderAdapter } from "../base";
 import { parseDataUrl } from "../image";
 import { ChatGptWebAdapterError } from "./adapter-error";
+import { chatGptCompactionFailure } from "./failure-diagnostics";
+import { nativeToolFailure } from "./native-tool-failure";
 import { ChatGptBrowserWorker } from "./browser-worker";
 import { extractChatGptTurnEnvironment, extractChatGptTurnIdentity, priorChatGptAbortedTurnIds, hasCurrentChatGptEnvironmentContext, extractChatGptRootThreadMetadata, extractChatGptThreadSpawnLineage } from "./environment";
 import { CHATGPT_WEB_LUNA_MODEL_ID, resolveChatGptWebModelMode, type ChatGptWebCapabilities } from "./model";
@@ -231,8 +235,17 @@ function brokerContent(content: string | CodexContentPart[]): unknown[] {
   });
 }
 
-function brokerResult(message: CodexToolResultMessage): BrokerToolResult {
+export function brokerResult(message: CodexToolResultMessage): BrokerToolResult {
+  message = compactCommandOutput(message);
   const content = brokerContent(message.content);
+  const failure = nativeToolFailure(message);
+  if (failure) {
+    content.push({ type: "text", text: `[Harness observation: ${failure.code}; original result above unchanged] ${failure.guidance}` });
+    console.info(`[chatgpt-web] native_tool_failure ${JSON.stringify({
+      callId: message.toolCallId, tool: message.toolName, code: failure.code, origin: "native_result_envelope",
+      ...(failure.exitCode !== undefined ? { exitCode: failure.exitCode, failureKind: failure.failureKind } : {}),
+    })}`);
+  }
   const text = typeof message.content === "string"
     ? message.content
     : message.content.filter(part => part.type === "text").map(part => part.text).join("\n");
@@ -240,7 +253,7 @@ function brokerResult(message: CodexToolResultMessage): BrokerToolResult {
   return {
     content,
     ...(structured !== undefined ? { structuredContent: structured } : {}),
-    ...(message.isError ? { isError: true } : {}),
+    ...(message.isError || failure ? { isError: true } : {}),
   };
 }
 
@@ -296,9 +309,17 @@ function replayEvents(events: AdapterEvent[], emit: (event: AdapterEvent) => voi
 
 function submittedTurnFailure(session: ChatGptTurnSession, error: unknown): Error {
   const normalized = error instanceof Error ? error : new Error(String(error));
-  if (normalized instanceof ChatGptWebAdapterError) return normalized;
   const phase = session.runtime.submission?.phase;
   if (!phase || phase === "prepared") return normalized;
+  if (normalized instanceof ChatGptWebAdapterError) {
+    if (!normalized.retryable) return normalized;
+    // Sending may already have executed tools. A transient upstream error does not undo them.
+    return new ChatGptWebAdapterError(
+      "ChatGPT reported an error after submission may have started. Inspect the existing task and tool results before continuing.",
+      { status: normalized.status, errorType: normalized.errorType, code: normalized.code,
+        retryable: false, cause: normalized },
+    );
+  }
   const ambiguous = phase === "send_activated";
   const identityFailure = /^ChatGPT (exposed \d+ new conversation turns|response identity|opened another user turn)/.test(normalized.message);
   return new ChatGptWebAdapterError(
@@ -733,6 +754,20 @@ export function createChatGptWebAdapter(
         const omittedSystemBytes = reused
           ? Buffer.byteLength(JSON.stringify(checkpointInput.parsed.context.systemPrompt ?? []), "utf8") - 2
           : 0;
+        if (reused) {
+          const lastAssistant = checkpointInput.parsed.context.messages.findLastIndex(message => message.role === "assistant");
+          const before = checkpointInput.parsed.context.messages.slice(lastAssistant + 1);
+          const saved = Buffer.byteLength(JSON.stringify(before), "utf8") - Buffer.byteLength(JSON.stringify(input.context.messages), "utf8");
+          if (saved > 0) console.info(`[chatgpt-web] retained_context_savings ${JSON.stringify({
+            traceId, savedSerializedBytes: saved, method: "exact_goal_reference", scope: "not_billing_tokens",
+          })}`);
+        }
+        const wireMessages = compiledChatGptWebMessages(compiled);
+        console.info(`[chatgpt-web] context_submission ${JSON.stringify({
+          traceId, retained: reused, parts: wireMessages.length,
+          submittedTextBytes: wireMessages.reduce((sum, text) => sum + Buffer.byteLength(text, "utf8"), 0),
+          attachments: compiled.images.length, scope: "prepared_text_not_confirmed_network_delivery",
+        })}`);
         console.info(`[chatgpt-web] context trace=${traceId} retained=${reused} systemBytesOmitted=${omittedSystemBytes} messages=${input.context.messages.length} promptBytes=${Buffer.byteLength(compiled.text, "utf8")}`);
         // Publish only after preparation succeeds: otherwise its failure revokes the token
         // before the response observer uses it and masks the cause as an expired capability.
@@ -1103,16 +1138,14 @@ export function createChatGptWebAdapter(
                 // available to a canonical reconnect without a second browser submission.
                 throw error;
               }
-              const handoffError = error instanceof Error ? error : new Error(String(error));
-              console.error("[chatgpt-web] structured context handoff failed:", handoffError);
-              emit({
-                type: "error",
-                message: "ChatGPT did not complete the context handoff. Retry the task.",
-                status: 409,
-                errorType: "invalid_request_error",
-                code: "compaction_handoff_failed",
-                retryable: false,
-              });
+              const failure = chatGptCompactionFailure(error);
+              console.error(`[chatgpt-web] compaction_failure ${JSON.stringify({
+                traceId: compactionTraceId, handoffTraceId,
+                origin: "context_handoff", code: failure.code,
+                status: failure.status, errorType: failure.errorType,
+                retryable: false, policyVerdict: "unknown",
+              })}`);
+              emit(failure);
               return;
             }
             emit({ type: "text_delta", text: summary, phase: "final_answer" });

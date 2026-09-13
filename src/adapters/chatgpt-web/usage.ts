@@ -143,12 +143,22 @@ export function estimateChatGptWebUsage(
   capabilities: ChatGptWebCapabilities,
   experimentalBiggerContext = false,
 ): CodexUsage {
+  const accountingStarted = performance.now();
   const inputTokens = estimateChatGptWebInputTokens(parsed, capabilities, {
     experimentalMultipartParts: experimentalBiggerContext
       ? resolveBiggerContextMultipartParts(parsed, capabilities)
       : undefined,
   });
   const outputTokens = conservativeTextTokens(roundEvidenceText(evidence), parsed.modelId);
+  const identity = extractChatGptTurnIdentity(parsed);
+  const results = parsed.context.messages.filter(message => message.role === "toolResult");
+  console.info(`[chatgpt-web] context_accounting ${JSON.stringify({
+    threadId: identity.threadId, turnId: identity.turnId,
+    estimated: true, scope: "canonical_model_representation_not_wire_or_billing",
+    inputTokens, outputTokens, messages: parsed.context.messages.length, toolResults: results.length,
+    rawToolResultChars: results.reduce((sum, message) => sum + (typeof message.content === "string" ? message.content.length : JSON.stringify(message.content).length), 0),
+    accountingMs: Math.round(performance.now() - accountingStarted),
+  })}`);
   return {
     inputTokens,
     outputTokens,

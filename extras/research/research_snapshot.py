@@ -11,7 +11,7 @@ STATE_KEYS = ('schema', 'version', 'run_id', 'status', 'action', 'contract', 'tr
 CHECKPOINT_KEYS = ('status', 'direction', 'report', 'next', 'previous_turn', 'partition',
                    'partition_record', 'qualification', 'running_trial',
                    'runtime_trials_completed', 'new_models', 'new_accounts',
-                   'teacher_consulted_this_turn', 'campaign_completed_models')
+                   'teacher_consulted_this_turn', 'teacher_submission_pending', 'campaign_completed_models')
 DIRECTION_KEYS = ('status', 'decision', 'conclusion', 'next', 'next_action', 'qualification',
                   'failed_gate', 'outcome', 'reason', 'diagnostic_only', 'source_status')
 

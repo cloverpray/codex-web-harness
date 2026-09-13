@@ -380,8 +380,11 @@ test('broker rejects teacher fallback before queueing and keeps the binding usab
     expect(rejected.isError).toBe(true);
     expect(rejected.structuredContent.message).toContain('Full-history');
     expect(rejected.structuredContent.turn_active).toBe(true);
-    const oversized = await callTurnBroker<any>(socketPath,{method:'invoke',bindingId,wireName:'exec_command',arguments:{cmd:'rg anything',max_output_tokens:28000}});
-    expect(oversized.structuredContent.message).toContain('8000');
+    const oversized = callTurnBroker<any>(socketPath,{method:'invoke',bindingId,wireName:'exec_command',arguments:{cmd:'rg anything',max_output_tokens:28000}});
+    const [request] = await broker.nextToolBatch(token);
+    expect(request?.arguments).toEqual({cmd:'rg anything',max_output_tokens:8000});
+    broker.completeTool(token,request!.callId,{content:[{type:'text',text:'bounded result'}]});
+    expect((await oversized).content).toEqual([{type:'text',text:'bounded result'}]);
     const result = await callTurnBroker<{environment: {cwd:string}}>(socketPath,{method:'resolve',bindingId});
     expect(result.environment.cwd).toBe(root);
   } finally { await broker.close(); rmSync(root,{recursive:true,force:true}); }

@@ -2384,6 +2384,7 @@ function dialogPage(text: string, buttonText = "Got it", errorActionVisible = fa
       },
       last: () => dialog,
       isVisible: async () => matches,
+      evaluateAll: async () => matches,
       getByRole: (_role: string, options?: { name?: string | RegExp }) => {
         const name = options?.name;
         buttonMatches = name === undefined
@@ -2401,6 +2402,7 @@ function dialogPage(text: string, buttonText = "Got it", errorActionVisible = fa
         const action = {
           last: () => action,
           isVisible: async () => errorActionVisible && testId === "regenerate-thread-error-button",
+          evaluateAll: async () => errorActionVisible && testId === "regenerate-thread-error-button",
         };
         return action;
       },
@@ -3645,7 +3647,7 @@ test("the daemon prefers the browser helper that shipped beside its own entrypoi
 
 
 test("multipart observation surfaces Stopped thinking on its first observation even with live MCP work", async () => {
-  const absent = { last() { return this; }, filter() { return this; }, isVisible: async () => false };
+  const absent = { last() { return this; }, filter() { return this; }, isVisible: async () => false, evaluateAll: async () => false };
   const page = { isClosed: () => false, locator: () => absent };
   const binding = { locator: { getByText: () => absent, getByTestId: () => absent } };
   const snapshot = { responsePresent: true, stoppedThinkingVisible: true, visibleText: "", completionActionVisible: false };
@@ -3656,7 +3658,7 @@ test("multipart observation surfaces Stopped thinking on its first observation e
     acknowledgeToolBatch: async () => { acknowledged = true; },
   };
   const observe = (ChatGptBrowserWorker.prototype as any).waitForMultipartAcknowledgement;
-  await expect(observe.call({ responseDomSnapshot: async () => { observations += 1; return snapshot; } },
+  await expect(observe.call(Object.assign(Object.create(ChatGptBrowserWorker.prototype), { responseDomSnapshot: async () => { observations += 1; return snapshot; } }),
     page, binding, {}, {}, Date.now() + 1_000, undefined, progress,
   )).rejects.toMatchObject({ code: "chatgpt_stopped_thinking", retryable: false });
   expect(observations).toBe(1);
@@ -4031,4 +4033,35 @@ test("bound assistant learns late message identity and survives history containe
   expect(rebound.messageIds).toEqual(["message3"]);
   state.userIdentities.push("another-user");
   await expect(worker.reconcileAssistantTurnBinding(page, baseline, learned)).rejects.toThrow("another user turn");
+});
+
+
+test("ordinary response polling records a late message ID before the container disappears", async () => {
+  const worker = Object.create(ChatGptBrowserWorker.prototype) as any;
+  let snapshot: any = {responsePresent: true, messageIds: []};
+  worker.responseDomSnapshot = async () => snapshot;
+  const binding: any = {identity: "old", locator: {}, acceptedTurnIdentities: []};
+  await worker.observeBoundResponse(binding, {});
+  snapshot = {responsePresent: true, messageIds: ["late-stable-message"]};
+  await worker.observeBoundResponse(binding, {});
+  snapshot = {responsePresent: false, messageIds: []};
+  await worker.observeBoundResponse(binding, {});
+  expect(chatGptReboundTurnIdentity([], "old", ["history1", "history2", "replacement"], binding.messageIds,
+    {replacement: ["late-stable-message"]})).toBe("replacement");
+});
+
+
+test("terminal error text quoted in an answer cannot abort the live response", async () => {
+  const { createDocument } = require("@mixmark-io/domino");
+  for (const tag of ['div class="markdown"', 'pre', 'blockquote', 'div data-message-author-role="user"', 'div']) {
+    const document = createDocument(`<body><${tag}><span>Something went wrong. See help.openai.com.</span></${tag.split(' ')[0]}></body>`);
+    const context = createContext({getComputedStyle: () => ({display: "block", visibility: "visible", opacity: "1"})});
+    const candidate = document.querySelector('span');
+    // domino lacks isConnected; supply its actual attachment state for the browser predicate.
+    for (let node = candidate; node; node = node.parentElement) Object.defineProperty(node, 'isConnected', {value: true});
+    const locator = {evaluateAll: async (callback: Function) => runInContext(`(${callback.toString()})`, context)([candidate])};
+    const page = {getByText: () => locator, getByTestId: () => ({evaluateAll: async () => false})} as any;
+    if (tag === 'div') await expect(throwIfChatGptTerminalErrorAlert(page)).rejects.toMatchObject({code: 'upstream_server_error'});
+    else await throwIfChatGptTerminalErrorAlert(page);
+  }
 });

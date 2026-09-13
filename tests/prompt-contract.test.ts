@@ -59,7 +59,15 @@ test("Full-mode Pro prompts pass one stable turn token directly to native action
   expect(transportOnly).toContain(`The task context is complete. Pass turn_token ${token} unchanged to every Codex Native call in this response, including continuations after tool results; do not expose it in the answer. Execute the latest active user request now.`);
   expect(transportOnly).not.toMatch(/codex_bind_turn|binding_id|outer_tool_gateway|command_tool/);
   expect(transportOnly).not.toMatch(/codex_exec|codex_write_stdin|codex_apply_patch|codex_view_image|codex_tool_inventory|codex\.control\.turn_complete/);
-  expect(transportOnly).not.toMatch(/expired|invalid|revoked|blocked|safety|security layer|permission gate/i);
+  expect(transportOnly).not.toMatch(/security layer|permission gate/i);
+  expect(transportOnly).toContain("Use only the turn token supplied for the current response.");
+  expect(transportOnly).toContain("stop local calls in that response and report the interruption");
+  expect(transportOnly).toContain("Do not search history for another token");
+  expect(transportOnly).toContain("Do not split a refused operation into equivalent smaller calls");
+  expect(transportOnly).toContain("unavailable safety verdict as unconfirmed");
+  expect(transportOnly).toContain("identify the tool and observed error code");
+  expect(transportOnly).toContain("If the original rejection is unavailable, say the cause is unconfirmed.");
+  expect(transportOnly).toContain("Do not infer a blanket tool ban from one failure or change tools to circumvent a refusal.");
   expect(compiled.text).not.toContain("CODEX_INTERNAL_CONTEXT_COMPACT");
   expect(compiled.text).not.toContain("internally compacts this response");
 });

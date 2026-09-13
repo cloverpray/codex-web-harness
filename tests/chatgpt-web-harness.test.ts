@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { createHash } from "node:crypto";
@@ -1183,6 +1183,39 @@ describe("ChatGPT outer-native harness v4", () => {
     }
   });
 
+  for (const code of ["upstream_server_error", "rate_limit_exceeded"]) for (const phase of ["prepared", "send_activated", "submitted"] as const) {
+    test(`typed transient failures respect submission boundary: ${code}/${phase}`, async () => {
+      const provider: CodexProviderConfig = {
+        adapter: "chatgpt-web", baseUrl: `browser://typed-failure-${code}-${phase}-${Date.now()}`,
+        chatgptWeb: { localToolsEnabled: false, solAvailable: true, proAvailable: true },
+      };
+      const worker = ChatGptBrowserWorker.forProvider(provider);
+      const originalRun = worker.run.bind(worker);
+      let starts = 0;
+      (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = async turn => {
+        starts += 1;
+        if (phase !== "prepared") await turn.onSendActivated?.();
+        if (phase === "submitted") turn.onSubmitted?.();
+        throw new ChatGptWebAdapterError("ChatGPT displayed a transient error", {
+          status: 502, errorType: "server_error", code, retryable: true,
+        });
+      };
+      try {
+        const request = rawWireRequest(environmentXml);
+        const adapter = createChatGptWebAdapter(provider);
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const events: AdapterEvent[] = [];
+          await adapter.runTurn!(request, { headers: new Headers() }, event => events.push(event));
+          expect(events.at(-1)).toMatchObject({ type: "error", code,
+            retryable: phase === "prepared" });
+        }
+        expect(starts).toBe(phase === "prepared" ? 2 : 1);
+      } finally {
+        (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = originalRun;
+      }
+    });
+  }
+
   test("an unclassified browser failure retires its session before the next native retry", async () => {
     const socketPath = brokerTestEndpoint(`cgw-h4-error-retry-${process.pid}-${Date.now()}`);
     const provider: CodexProviderConfig = {
@@ -1254,7 +1287,7 @@ describe("ChatGPT outer-native harness v4", () => {
     }
   });
 
-  test("caps automatic rate-limit browser sends at three retries for one native turn", async () => {
+  test("caps pre-submission rate-limit browser attempts at three retries for one native turn", async () => {
     const socketPath = brokerTestEndpoint(`cgw-h4-retry-budget-${process.pid}-${Date.now()}`);
     const provider: CodexProviderConfig = {
       adapter: "chatgpt-web",
@@ -1266,7 +1299,6 @@ describe("ChatGPT outer-native harness v4", () => {
     let browserStarts = 0;
     (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = async turn => {
       browserStarts += 1;
-      turn.onSendActivated?.();
       throw new ChatGptWebAdapterError("ChatGPT rate limit: too many requests. Try again in a few minutes.", {
         status: 429,
         errorType: "rate_limit_error",
@@ -2065,6 +2097,80 @@ describe("ChatGPT outer-native harness v4", () => {
     broker.completeTool(token, request!.callId, toolResult({ output: tempRoot }));
     expect(await invocation).toEqual(toolResult({ output: tempRoot }));
     await broker.close();
+  });
+
+  test("diagnoses local rejection and tool errors without declaring a policy ban or leaking contents", async () => {
+    const socketPath = brokerTestEndpoint(`cgw-diagnostics-${process.pid}-${Date.now()}`);
+    const broker = TurnBroker.forSocket(socketPath);
+    const info = spyOn(console, "info").mockImplementation(() => {});
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const token = await broker.register(extractChatGptTurnEnvironment(parsed(environmentXml)), 10_000, "diagnostic_trace");
+      const { bindingId } = await callTurnBroker<{ bindingId: string }>(socketPath, { method: "claim", token });
+      const rejected = await callTurnBroker<BrokerToolResult>(socketPath, {
+        method: "invoke", bindingId, wireName: "codex_exec", arguments: { cmd: "PRIVATE_ARGUMENT" },
+      });
+      expect(rejected.isError).toBeTrue();
+      for (const isError of [true, false]) {
+        const pending = callTurnBroker<BrokerToolResult>(socketPath, {
+          method: "invoke", bindingId, wireName: "exec_command", arguments: { cmd: "PRIVATE_ARGUMENT" },
+        });
+        const batch = await broker.nextToolBatch(token);
+        expect(batch).toHaveLength(1);
+        const result = { content: [{ type: "text", text: "PRIVATE_OUTPUT blocked by OpenAI's safety checks" }], isError };
+        broker.completeTool(token, batch[0]!.callId, result);
+        expect(await pending).toEqual(result);
+      }
+      const observations = info.mock.calls.flat().filter(v => String(v).includes("tool_outcome "))
+        .map(v => JSON.parse(String(v).split("tool_outcome ")[1]!));
+      expect(observations.map(v => v.outcome)).toEqual(["tool_reported_error", "returned"]);
+      expect(observations.every(v => v.policyVerdict === "unknown" && v.traceId === "diagnostic_trace")).toBeTrue();
+      expect(warn.mock.calls.flat().map(String).join("\n")).toContain('"dispatched":false');
+      const logs = JSON.stringify([...info.mock.calls, ...warn.mock.calls]);
+      for (const secret of [token, bindingId, "PRIVATE_ARGUMENT", "PRIVATE_OUTPUT", "safety checks"]) expect(logs).not.toContain(secret);
+    } finally {
+      info.mockRestore(); warn.mockRestore(); await broker.close();
+    }
+  });
+
+  test.each([true, false])("compaction errors preserve their cause code without dumping the exception or resubmitting (typed=%s)", async typed => {
+    const socketPath = brokerTestEndpoint(`cgw-compact-diagnostic-${process.pid}-${Date.now()}`);
+    const provider: CodexProviderConfig = {
+      adapter: "chatgpt-web", baseUrl: `browser://diagnostic-${Date.now()}`,
+      chatgptWeb: { browserHost: "launcher", browserHostDescriptorPath: join(tempRoot, "diagnostic-launcher.json"),
+        brokerSocketPath: socketPath, turnTimeoutMs: 30_000, localToolsEnabled: true, solAvailable: true, proAvailable: true },
+    };
+    const worker = ChatGptBrowserWorker.forProvider(provider);
+    const originalRun = worker.run;
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    let starts = 0;
+    worker.run = async () => {
+      starts++;
+      if (!typed) throw new Error("PRIVATE_EXCEPTION_MESSAGE");
+      throw new ChatGptWebAdapterError("PRIVATE_EXCEPTION_MESSAGE", {
+        status: 409, errorType: "invalid_request_error", code: "compaction_handoff_timeout", retryable: false,
+        cause: new Error("PRIVATE_CAUSE"),
+      });
+    };
+    try {
+      const adapter = createChatGptWebAdapter(provider);
+      const request = rawWireRequest(environmentXml);
+      request._compactionRequest = true;
+      for (let i = 0; i < 2; i++) {
+        const events: AdapterEvent[] = [];
+        await adapter.runTurn!(request, { headers: new Headers() }, e => events.push(e));
+        expect(events.find(e => e.type === "error")).toMatchObject({
+          code: typed ? "compaction_handoff_timeout" : "compaction_handoff_failed", status: 409, retryable: false,
+        });
+        expect(JSON.stringify(events)).not.toContain("PRIVATE_");
+      }
+      expect(starts).toBe(1);
+      const log = errors.mock.calls.flat().filter(v => String(v).includes("compaction_failure ")).map(String).join("\n");
+      expect(log).toContain(typed ? '"code":"compaction_handoff_timeout"' : '"code":"compaction_handoff_failed"');
+      expect(log).not.toContain("PRIVATE_");
+    } finally {
+      worker.run = originalRun; errors.mockRestore(); await TurnBroker.forSocket(socketPath).close();
+    }
   });
 
   test("makes capability claim retries idempotent until the turn is revoked", async () => {
@@ -3275,9 +3381,11 @@ describe("ChatGPT outer-native harness v4", () => {
       expect(invalid.isError).toBe(true);
       expect(JSON.stringify(invalid.content)).toContain("turn token is invalid, expired, or revoked");
 
-      const oversizedOutput = await call("codex_exec", { turn_token: token, cmd: "pwd", max_output_tokens: 28000 });
-      expect(oversizedOutput.isError).toBe(true);
-      expect(JSON.stringify(oversizedOutput.content)).toContain("8000");
+      const oversizedOutput = call("codex_exec", { turn_token: token, cmd: "pwd", max_output_tokens: 28000 });
+      const [boundedRequest] = await broker.nextToolBatch(token);
+      expect(boundedRequest?.input).toContain(JSON.stringify({ cmd: "pwd", max_output_tokens: 8000 }));
+      broker.completeTool(token, boundedRequest!.callId, toolResult({ output: "bounded", exit_code: 0 }));
+      expect((await oversizedOutput).isError).toBeUndefined();
       const execPromise = call("codex_exec", { turn_token: token, cmd: "pwd", workdir: tempRoot });
       const [execRequest] = await Promise.race([
         broker.nextToolBatch(token),

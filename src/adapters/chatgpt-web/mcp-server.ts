@@ -1,3 +1,9 @@
+import { failFastWebCommand } from "./command-fail-fast";
+import { observeMcpTransport } from "./mcp-transport-diagnostics";
+import { join } from "node:path";
+import { getConfigDir } from "../../config";
+import { createMcpDiagnosticLog } from "./mcp-diagnostic-log";
+import { observeMcpCall } from "./mcp-call-lifecycle";
 import { assertWebAgentToolArguments, webAgentToolGuardProgram } from "./agent-tool-policy";
 import { createHash, randomBytes } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -475,6 +481,11 @@ export async function runChatGptMcpServer(options: {
   contract?: ChatGptMcpContract;
 }): Promise<void> {
   const contract = options.contract ?? "native";
+  const persistDiagnostic = createMcpDiagnosticLog(join(getConfigDir(), "diagnostics", "mcp"));
+  const diagnostic = (event: string, fields: Record<string, unknown>) => {
+    persistDiagnostic(event, fields);
+    try { console.error(`[chatgpt-web-mcp] ${event} ${JSON.stringify(fields)}`); } catch {}
+  };
   const server = new McpServer(
     { name: contract === "safe" ? "codex-safe" : "codex-native", version: VERSION },
     contract === "safe" ? { instructions: ZERO_RISK_MCP_INSTRUCTIONS } : undefined,
@@ -534,15 +545,22 @@ export async function runChatGptMcpServer(options: {
     extra: McpRequestExtra,
     action: (claimed: ClaimedTurn) => Promise<T> | T,
   ): Promise<T> => {
-    const claimed = await claimTurn(toolName, turnToken, extra);
-    try {
-      return await action(claimed);
-    } finally {
-      // The broker's terminal fence treats even a fully local inventory lookup as live MCP work.
-      // Settle the lease without the request AbortSignal: cancellation must not strand activity
-      // and silently prevent every later completion candidate from committing.
-      await settleTurnActivity(turnToken, claimed.activityId);
-    }
+    let bindingHash: string | undefined;
+    return observeMcpCall({
+      tool: toolName,
+      callId: `mcp_${randomBytes(12).toString("hex")}`,
+      claim: async () => {
+        const claimed = await claimTurn(toolName, turnToken, extra);
+        bindingHash = scopeHash(claimed.bindingId);
+        return claimed;
+      },
+      action,
+      // Settle without the request AbortSignal: cancellation must not strand activity.
+      settle: claimed => settleTurnActivity(turnToken, claimed.activityId),
+      emit: event => diagnostic("call_lifecycle", {
+        ...event, requestHash: scopeHash(JSON.stringify(extra.requestId)), bindingHash, tokenHash: scopeHash(turnToken), scope: event.event === "received" ? requestScopeSummary(extra) : undefined,
+      }),
+    });
   };
 
   if (contract === "safe") {
@@ -578,8 +596,17 @@ export async function runChatGptMcpServer(options: {
     payload: { arguments?: Record<string, unknown>; input?: string },
     signal?: AbortSignal,
   ) => {
-    assertNotChatGptBridgeTool(wireName(tool));
-    if (!tool.freeform) assertWebAgentToolArguments(wireName(tool), payload.arguments ?? (payload.arguments = {}));
+    try {
+      assertNotChatGptBridgeTool(wireName(tool));
+      if (!tool.freeform) assertWebAgentToolArguments(wireName(tool), payload.arguments ?? (payload.arguments = {}));
+    } catch (error) {
+      diagnostic("tool_rejection", {
+        bindingHash: scopeHash(bindingId), origin: "mcp_guard", tool: wireName(tool),
+        code: isChatGptBridgeToolName(wireName(tool)) ? "codex_bridge_recursion" : "web_tool_argument_policy",
+        dispatched: false, turnActive: true,
+      });
+      throw error;
+    }
     const timeoutMs = chatGptMcpInvocationTimeout(bound);
     try {
       const response = await callTurnBroker<BrokerToolResult>(options.brokerSocketPath, {
@@ -591,6 +618,12 @@ export async function runChatGptMcpServer(options: {
       }, timeoutMs, signal);
       return asMcpResult(response);
     } catch (error) {
+      diagnostic("invocation_failure", {
+        bindingHash: scopeHash(bindingId), origin: "broker_transport", tool: wireName(tool),
+        code: error instanceof TurnBrokerTimeoutError ? "codex_tool_timeout"
+          : signal?.aborted ? "invocation_aborted" : "broker_invocation_failed",
+        policyVerdict: "unknown", retirementRequested: true,
+      });
       // A cancelled/timed-out MCP request no longer has a consumer for the native result. Revoke
       // the whole turn capability so the broker drops the pending invocation and every later call
       // from that abandoned ChatGPT response fails explicitly against its retired binding.
@@ -746,8 +779,9 @@ export async function runChatGptMcpServer(options: {
       async claimed => {
         const { cmd, workdir, yield_time_ms, max_output_tokens, tty } = input;
         const bound = claimed.environment;
+        const dispatchCommand = failFastWebCommand(cmd);
         const execCommandArguments = {
-          cmd,
+          cmd: dispatchCommand,
           ...(workdir ? { workdir } : {}),
           ...(yield_time_ms !== undefined ? { yield_time_ms } : {}),
           ...(max_output_tokens !== undefined ? { max_output_tokens } : {}),
@@ -755,7 +789,7 @@ export async function runChatGptMcpServer(options: {
         };
         assertWebAgentToolArguments("exec_command", execCommandArguments);
         const shellCommandArguments = {
-          command: cmd,
+          command: dispatchCommand,
           ...(workdir ? { workdir } : {}),
           ...(yield_time_ms !== undefined ? { timeout_ms: yield_time_ms } : {}),
         };
@@ -1019,5 +1053,7 @@ export async function runChatGptMcpServer(options: {
     );
   }
 
-  await server.connect(new StdioServerTransport());
+  const transport = new StdioServerTransport();
+  observeMcpTransport(transport, diagnostic);
+  await server.connect(transport);
 }

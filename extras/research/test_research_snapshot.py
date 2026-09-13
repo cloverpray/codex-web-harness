@@ -11,6 +11,10 @@ class TestSnapshot(unittest.TestCase):
  def put(self,p,v):p.write_text(json.dumps(v))
  def test_snapshot_readonly_and_dedup(self):
   before={p:(p.read_bytes(),p.stat().st_mtime_ns) for p in self.root.rglob('*') if p.is_file()};v=json.loads(m.collect(self.run,self.cp));self.assertEqual(v['warnings'],[]);self.assertEqual(len(v['linked_evidence']),1);self.assertEqual(v['linked_evidence'][0]['omitted_keys'],['details']);self.assertEqual(before,{p:(p.read_bytes(),p.stat().st_mtime_ns) for p in self.root.rglob('*') if p.is_file()})
+ def test_pending_teacher_submission_is_never_omitted(self):
+  self.put(self.cp,{'teacher_submission_pending':{'handle':'existing','status':'pending'}})
+  v=json.loads(m.collect(self.run,self.cp))
+  self.assertEqual(v['checkpoint']['values']['teacher_submission_pending']['handle'],'existing')
  def test_budget_fails_without_truncation(self):
   with self.assertRaisesRegex(ValueError,'byte budget'):m.collect(self.run,self.cp,20)
  def test_identity(self):

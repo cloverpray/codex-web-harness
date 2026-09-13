@@ -765,18 +765,29 @@ export async function throwIfChatGptSessionFailureAlert(page: Page): Promise<voi
   );
 }
 
+async function chatGptTerminalUiVisible(locator: Locator): Promise<boolean> {
+  return withChatGptBrowserObservationTimeout(locator.evaluateAll(elements => elements.some(element => {
+    const content = '.markdown, pre, code, blockquote, [data-message-author-role="user"]';
+    if (element.closest(content) || element.querySelector(content)) return false;
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (!node.isConnected || style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+    }
+    return true;
+  })), 2_000).catch(() => false);
+}
+
 const chatGptTerminalErrorAlert = (scope: ChatGptTextScope): Locator => scope
-  .getByText(/Something went wrong[\s\S]*help\.openai\.com/i)
-  .last();
+  .getByText(/Something went wrong[\s\S]*help\.openai\.com/i);
 
 export async function throwIfChatGptTerminalErrorAlert(scope: ChatGptTextScope): Promise<void> {
-  if (await scope.getByTestId("regenerate-thread-error-button").last().isVisible().catch(() => false)) {
+  if (await chatGptTerminalUiVisible(scope.getByTestId("regenerate-thread-error-button"))) {
     throw new ChatGptWebAdapterError(
       "ChatGPT displayed an error for this response. Check the ChatGPT tab for the exact error, then retry the turn.",
       { status: 502, errorType: "server_error", code: "upstream_server_error", retryable: true },
     );
   }
-  if (!await chatGptTerminalErrorAlert(scope).isVisible().catch(() => false)) return;
+  if (!await chatGptTerminalUiVisible(chatGptTerminalErrorAlert(scope))) return;
   throw new ChatGptWebAdapterError(
     "ChatGPT ended the turn with 'Something went wrong'. Retry the turn.",
     { status: 502, errorType: "server_error", code: "upstream_server_error", retryable: true },
@@ -1591,6 +1602,8 @@ interface ChatGptResponseDomSnapshot {
   completionActionVisible: boolean;
   stoppedThinkingVisible: boolean;
   traceBlocks: ChatGptVisibleTraceBlock[];
+  messageIds?: string[];
+  refusalMarkerVisible?: boolean;
 }
 
 interface ChatGptResponseDomCache {
@@ -3464,7 +3477,7 @@ export class ChatGptBrowserWorker {
       }
       await throwIfChatGptSessionFailureAlert(page);
       await throwIfChatGptTerminalErrorAlert(responseTurn.locator);
-      let snapshot = await this.responseDomSnapshot(responseTurn.locator, responseDomCache);
+      let snapshot = await this.observeBoundResponse(responseTurn, responseDomCache);
       if (!snapshot.responsePresent && await responseTurn.locator.count() !== 1) {
         const rebound = await this.reconcileAssistantTurnBinding(
           page,
@@ -3476,7 +3489,7 @@ export class ChatGptBrowserWorker {
           responseTurn = rebound;
           responseDomCache.key = undefined;
           responseDomCache.snapshot = undefined;
-          snapshot = await this.responseDomSnapshot(responseTurn.locator, responseDomCache);
+          snapshot = await this.observeBoundResponse(responseTurn, responseDomCache);
         }
       }
       if (snapshot.stoppedThinkingVisible) throw chatGptStoppedThinkingError();
@@ -3742,6 +3755,17 @@ export class ChatGptBrowserWorker {
       await new Promise(resolveSleep => setTimeout(resolveSleep, 100));
     }
     throw new Error("ChatGPT accepted the prompt attachments but did not make the message ready to send");
+  }
+
+  private async observeBoundResponse(
+    binding: ChatGptAssistantTurnBinding,
+    cache: ChatGptResponseDomCache,
+  ): Promise<ChatGptResponseDomSnapshot> {
+    const snapshot = await this.responseDomSnapshot(binding.locator, cache);
+    if (snapshot.responsePresent && snapshot.messageIds?.length) {
+      binding.messageIds = snapshot.messageIds;
+    }
+    return snapshot;
   }
 
   private async responseDomSnapshot(
@@ -4131,6 +4155,11 @@ export class ChatGptBrowserWorker {
         key: observerKey,
         snapshot: {
           responsePresent: true,
+          messageIds: [...root.querySelectorAll('[data-message-author-role="assistant"][data-message-id]')]
+            .map(message => message.getAttribute("data-message-id") ?? "").filter(Boolean),
+          // Observation only: a displayed phrase does not authenticate its origin or cause.
+          // Do not turn model quotations into terminal errors or automatic retries.
+          refusalMarkerVisible: /blocked by OpenAI['’]s safety checks/i.test(root.textContent ?? ""),
           visibleText: renderedRoots.map(candidate => candidate.innerText.trim()).filter(Boolean).join("\n\n"),
           fullHtml: renderedRoots.map(candidate => candidate.innerHTML).join(""),
           markdownSegments,
@@ -4338,6 +4367,8 @@ export class ChatGptBrowserWorker {
     let managedPage: Page | undefined;
     let diagnosticPage: Page | undefined;
     let submissionMayBeRunning = false;
+    let sawRefusalMarker = false;
+    const observationStartedAt = Date.now();
     const submissionLifecycle = {
       onSendActivated: async () => {
         submissionMayBeRunning = true;
@@ -4366,6 +4397,14 @@ export class ChatGptBrowserWorker {
         : undefined;
       const estimatedInputTokens = estimateCompiledChatGptWebInputTokens(prepared, turn.modelId);
       const estimatedMessageTokens = estimateCompiledChatGptWebMessageTokens(prepared, turn.modelId);
+      console.info(`[chatgpt-web] transport_metrics ${JSON.stringify({
+        traceId: turn.traceId, retained: reuseConversation,
+        textPayloadBytes: Buffer.byteLength(prepared.text, "utf8"),
+        multipartPayloadBytes: prepared.multipart ? prepared.multipart.parts.reduce((n, text) => n + Buffer.byteLength(text, "utf8"), 0) : 0,
+        images: prepared.images.length, estimatedInputTokens,
+        trimmedMessages: prepared.trimmedCompactionMessages ?? 0,
+        scope: "compiled_text_not_network_bytes_or_billing",
+      })}`);
       const maxMessageChars = compiledChatGptWebMaxMessageChars(prepared);
       const maxStageMessageTokens = multipartStages
         ? Math.max(...multipartStages.map(stage => estimateTokens(stage.text, turn.modelId)))
@@ -4857,7 +4896,7 @@ export class ChatGptBrowserWorker {
           continue;
         }
 
-        let snapshot = await this.responseDomSnapshot(responseTurn.locator, responseDomCache);
+        let snapshot = await this.observeBoundResponse(responseTurn, responseDomCache);
         if (!snapshot.responsePresent) {
           try {
             const rebound = await withChatGptBrowserObservationTimeout(
@@ -4872,7 +4911,7 @@ export class ChatGptBrowserWorker {
               responseTurn = rebound;
               responseDomCache.key = undefined;
               responseDomCache.snapshot = undefined;
-              snapshot = await this.responseDomSnapshot(responseTurn.locator, responseDomCache);
+              snapshot = await this.observeBoundResponse(responseTurn, responseDomCache);
             }
           } catch (error) {
             if (!(error instanceof ChatGptBrowserObservationTimeoutError) || !launcherSurfaceId) throw error;
@@ -4901,6 +4940,15 @@ export class ChatGptBrowserWorker {
           }
         }
         if (snapshot.stoppedThinkingVisible) throw chatGptStoppedThinkingError();
+        if (snapshot.refusalMarkerVisible && !sawRefusalMarker) {
+          sawRefusalMarker = true;
+          console.info(`[chatgpt-web] response_surface_marker ${JSON.stringify({
+            traceId: turn.traceId, marker: "safety_refusal_phrase", origin: "unverified_response_surface",
+            elapsedMs: Date.now() - observationStartedAt,
+            brokerProgressRevision: turn.externalProgress?.snapshot().revision ?? null,
+          })}`);
+          await diagnostics.capture(page, "response-refusal-phrase-observed");
+        }
         if (snapshot.responsePresent) consecutiveObservationRebinds = 0;
         // The page was read successfully, so the fault budget is genuinely consecutive even when
         // this iteration goes on to `continue` for a rebind, confirmation, or liveness pause.
@@ -5084,6 +5132,13 @@ export class ChatGptBrowserWorker {
         }
         throw turn.abortSignal.reason;
       }
+      console.info(`[chatgpt-web] failure_context ${JSON.stringify({
+        traceId: turn.traceId, elapsedMs: Date.now() - observationStartedAt,
+        executionAbortRequested: turn.abortSignal?.aborted === true,
+        submissionMayBeRunning,
+        kind: error instanceof ChatGptWebAdapterError ? "adapter_error"
+          : error instanceof DOMException && error.name === "AbortError" ? "abort" : "unclassified",
+      })}`);
       console.error(
         `[chatgpt-web] browser turn ${turn.traceId} failed:`
         + ` ${redactChatGptUiDiagnostic(error instanceof Error ? error.message : String(error))}`,

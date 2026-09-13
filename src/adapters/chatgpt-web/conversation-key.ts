@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { SUMMARY_PREFIX } from "../../responses/compaction";
-import type { CodexParsedRequest } from "../../types";
+import type { CodexParsedRequest, CodexMessage } from "../../types";
 import { extractChatGptTurnIdentity } from "./environment";
 
 function messageText(item: Record<string, unknown>): string | undefined {
@@ -36,7 +36,7 @@ export function chatGptConversationKey(
   return createHash("sha256").update(JSON.stringify({
     namespace,
     // Bump when a retained transport contract changes incompatibly.
-    transportRevision: "20260912-retained-contract-v2",
+    transportRevision: "20260913-retained-goal-reference-v3",
     threadId: identity.threadId,
     modelId: parsed.modelId,
     reasoning: parsed.options.reasoning,
@@ -45,10 +45,42 @@ export function chatGptConversationKey(
   })).digest("hex");
 }
 
+function goalText(message: CodexMessage | undefined): string | undefined {
+  if (message?.role !== "user") return undefined;
+  const content = message.content;
+  const text = typeof content === "string" ? content
+    : content.length === 1 && content[0]?.type === "text" ? content[0].text : undefined;
+  return text?.startsWith('<codex_internal_context source="goal">')
+    && text.trimEnd().endsWith("</codex_internal_context>")
+    && Buffer.byteLength(text, "utf8") >= 4096 ? text : undefined;
+}
+
+// This is a reference within a confirmed retained conversation, never a new source of
+// authority. Only the most recent user message can match; edited budgets/objectives,
+// multimodal input and ordinary user requests are always transmitted in full.
+function retainedGoalSuffix(messages: CodexMessage[], lastAssistant: number): CodexMessage[] {
+  let previous = messages.slice(0, lastAssistant).findLast(message => message.role === "user");
+  return messages.slice(lastAssistant + 1).map(message => {
+    if (message.role !== "user") return message;
+    const text = goalText(message);
+    const matches = text !== undefined && text === goalText(previous);
+    previous = message;
+    if (!matches) return message;
+    return {
+      ...message,
+      content: "The user submitted the exact same Goal continuation block as the most recent original user Goal block already in this conversation. "
+        + "Apply that entire block again as the current user request, including its objective, continuation rules, budget and stop conditions, at its original user priority. "
+        + "This is a new continuation, not a replay of a completed response. Use the current task state. "
+        + `Unchanged block SHA-256: ${createHash("sha256").update(text).digest("hex")}.`,
+    };
+  });
+}
+
 /** Full history remains canonical; a retained epoch receives only the suffix after its last assistant reply. */
 export function retainedConversationResumeRequest(
   parsed: CodexParsedRequest,
 ): CodexParsedRequest | undefined {
+  if (parsed._compactionRequest) return undefined;
   const lastAssistant = parsed.context.messages.findLastIndex(message => message.role === "assistant");
   if (lastAssistant < 0 || lastAssistant === parsed.context.messages.length - 1) return undefined;
   return {
@@ -58,7 +90,7 @@ export function retainedConversationResumeRequest(
       // Selected only after the Launcher confirms a retained lease with the same key.
       // That key includes these exact instructions; fresh surfaces use the full request.
       systemPrompt: [],
-      messages: parsed.context.messages.slice(lastAssistant + 1),
+      messages: retainedGoalSuffix(parsed.context.messages, lastAssistant),
     },
   };
 }

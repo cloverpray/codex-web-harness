@@ -1570,9 +1570,9 @@ test("a disappeared retained source cannot leave its fresh compaction rebuild pa
     expect(browserStarts).toBe(2);
     expect(events.at(-1)).toMatchObject({
       type: "error",
-      code: "compaction_handoff_failed",
+      code: "compaction_handoff_timeout",
       retryable: false,
-      message: "ChatGPT did not complete the context handoff. Retry the task.",
+      message: "ChatGPT context handoff did not complete. Check the existing ChatGPT turn and task artifacts before resuming.",
     });
   } finally {
     releaseBrowser?.();

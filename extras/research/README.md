@@ -39,3 +39,26 @@ For migrating a previously misconfigured generic teacher, a local `$CODEX_HOME/h
 教师角色失败或线程满时不得降级；先收集完成结果、关闭不用的已完成句柄，或保存待提交证据包。55 秒等待超时不授权中断。主执行者保持唯一研究状态写入权。上述规则与研究方向无关。
 
 For an already-running Web executor, `hooks/web-bounded-output-handles.json` may list exact session UUIDs to reject native command output requests above 8000 tokens immediately. Native sessions outside this local list are unchanged. New Web bridge dispatch enforces the bound independently of that migration list. Do not publish either local handle file.
+
+
+## Incremental research context / 增量研究上下文
+
+`snapshot_delta.py BASE.json CURRENT.json` compares two full `research_snapshot.py` outputs. It preserves the current contract, state, checkpoint, pending work and warnings, and omits unchanged linked evidence. Baseline and reconstructed-content hashes make changes and removals verifiable. A different RUN/path is rejected; small payloads fall back to full output. It reads only its inputs and creates no hidden cache. Use Python 3.9+.
+
+Only use a delta when the receiving thread still has the full baseline. After compaction or in a new teacher thread, send a full snapshot. Keep each successfully delivered full snapshot in your existing task scratch area; do not overwrite a baseline while collecting its successor. Report actual output bytes including wrappers and the initial baseline; payload savings are not model billing or end-to-end speed measurements.
+
+发行包中的 extras 为可选组件，可由研究技能显式调用。新线程/压缩后基线丢失必须发送全量。保留当前合同、活任务和警告，不以省 token 牺牲决定性证据。研究调度建议见 [决策效率](DECISION_EFFICIENCY.zh-CN.md)：先复用/查重，再做能改变下一判断的最小区分实验，沿用完整资格和低频教师约束，不限定任何 Alpha 方向。
+
+
+Research scheduling: reuse verified artifacts and compare mechanism predictions, decision-time information, state/horizon, actions, controls and costs before expensive preparation. Prefer the cheapest experiment whose possible outcomes change the next resource or scientific decision. Preserve frozen plans and all account qualification requirements. Record decision-changing evidence and incremental wall time/transport bytes in existing artifacts, including unsuccessful work; never treat estimated replay tokens as billing or claim faster Alpha discovery from transport savings alone.
+
+
+## Integrity and Harness observations
+
+`checkpoint_commit.py` provides an owner-only, expected-hash checked checkpoint/manifest commit with a recoverable transaction marker. It requires an explicit unchanged run_id and a path-to-hash manifest; do not run alongside another state writer. It does not update RUN or rewrite evidence. A crashed process can leave a cooperative lock requiring owner verification; recovery refuses newer state or changed evidence. This is not a cross-file atomic transaction.
+
+`cohort_guard.py` compares explicit opportunity IDs, fillability and maturity masks under the same contract/data hashes; row order may differ, membership may not. Export the complete frozen universe, not only its intersection. It does not validate PIT or returns.
+
+`harness_metrics.py` summarizes launcher traces, compiled-text bytes, retained-context usage, displayed refusal phrases and broker queue-to-result intervals. Missing instrumentation yields null byte totals. Refusal phrases have unverified origin; overlapping tool intervals are not wall-clock totals. No raw prompt/tool contents are emitted.
+
+See [中文使用边界与格式](RESEARCH_INTEGRITY.zh-CN.md). These remain optional extras; the running application does not mutate research checkpoints or impose a specific Alpha direction.
