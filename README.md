@@ -16,6 +16,21 @@ You stay in the terminal. The model works through the Web. This unofficial launc
 
 Derived from [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web). See [provenance and changes](docs/CHANGES.md). This project is not affiliated with OpenAI.
 
+## New in alpha.14: keep the evidence, send less noise
+
+A long test log or repository search can fill the conversation before the next useful decision. **Alpha.14 gives the model a short preview and a file it can read in smaller pieces**, instead of carrying every large successful command result into each tool-capable history rebuild.
+
+| What changed | What you get |
+|---|---|
+| Recoverable output previews | The captured result stays on disk; the model can read the ranges it needs without rerunning the command. Errors and running process handles stay intact. |
+| Context accounting and a bounded token-count cache | Separate prepared submission size from estimated context growth, and avoid tokenizing identical text repeatedly. |
+| More precise failure reports | Distinguish local argument rejection, invalid turn tokens, native command failures and transport interruptions. Do not guess a platform safety verdict from an error phrase. |
+| Failed-prerequisite handling | Multiline `codex_exec` commands in supported POSIX shells default to `set -e`, so an unhandled failed repair stops later commands in that call. |
+
+**Offline result replay: 220,165 → 49,427 estimated tool-result tokens (77.6% less).** Of 45 captured results, 22 used previews. This measures the result representation only: reading more ranges adds tokens, and it is not a benchmark of total cost, task speed or model quality. Artifacts cannot recover output already truncated by the native tool. Read-only model contexts and compaction requests retain their original evidence.
+
+[Download alpha.14 for Windows, Linux or macOS](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.14) · [How output previews work](docs/CONTEXT_OUTPUTS.md) · [Four-platform CI](https://github.com/cloverpray/codex-web-harness/actions/runs/34764766139)
+
 ## More work from the access you already have
 
 Long debugging sessions and repeated experiments can add up on a metered model API. This project gives you another route: **use your available ChatGPT Web allowance for those sessions, without model API token charges for the Web inference itself.**
@@ -45,8 +60,8 @@ The upstream project supplies the core capability: a cross-platform desktop laun
 | Local tool workflow | Codex task tools connected through MCP | Additional recursion checks across discovery, dispatch and nested execution |
 | Model routing | Launcher-managed model integration | Explicit Web profile support and a separate model catalog |
 | Long conversations | Existing compaction and task continuation | Codex 0.154 Responses-based text compaction recovery |
-| Context transport | Task-bound retained conversations | Omission of unchanged static instructions and confirmed history prefixes |
-| Failure handling | Browser and bridge lifecycle management | Pre-stream environment rejection and explicit cancellation-settlement checks |
+| Context transport | Task-bound retained conversations | Omission of unchanged static instructions and confirmed history prefixes; recoverable large-output previews |
+| Failure handling | Browser and bridge lifecycle management | Stable response-identity recovery, durable MCP diagnostics and failed-prerequisite handling |
 | Teacher coordination | Fixed 30-second Web waits | A bounded 55-second option for evidence-only teachers, keeping 30-second worker waits |
 
 The aim is to make long tasks easier to finish: send less repeated context, recover supported compacted sessions, and reject recursive tool requests before they become timeouts. We have not measured a general speedup over upstream or native Codex. [Changes and provenance](docs/CHANGES.md) · [Validation](docs/VALIDATION.md).
@@ -97,7 +112,7 @@ The model slug selects the Web effort. Availability depends on the account and c
 | Windows x64 | Installer `.exe` | CI build and smoke passed; real-account validation pending |
 | macOS arm64 / x64 | `.dmg`, `.zip` | Both CI builds and smoke checks passed; real-account validation pending |
 
-The last pre-extraction Linux runtime suite passed **716 tests, with 1 platform skip**. A long-session recovery test completed compaction and the following reply; a subsequent resume also completed. These are correctness observations, **not a native-versus-Web speed benchmark**. Current source validation and release status are recorded in [VALIDATION.md](docs/VALIDATION.md).
+**Alpha.14 packages passed [CI build and startup checks on all four targets](https://github.com/cloverpray/codex-web-harness/actions/runs/34764766139).** Local verification passed 756 runtime tests (1 platform skip), 297 launcher tests and 23 optional research-helper tests. Windows/macOS authenticated account workflows still need manual validation. These checks do not establish native-versus-Web speed or quality parity. See [VALIDATION.md](docs/VALIDATION.md).
 
 ## Build from source
 
