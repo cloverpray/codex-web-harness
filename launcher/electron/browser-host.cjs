@@ -2535,9 +2535,15 @@ class BrowserHost {
   async logout() {
     requireAutomaticBrowserInspection(this, "Automated ChatGPT logout verification");
     return await this.withManualOperation("ChatGPT logout", async () => {
-      if (this.authView) this.closeAuthView(this.authView, true, false);
+      // Navigate every owned surface away from ChatGPT before clearing the persistent partition.
+      // Clearing storage while a ChatGPT document is active can leave service-worker or cookie
+      // writes racing the deletion, which made the next login silently reuse the old account.
+      await this.clearOwnedSessionForPasskey();
       const contents = this.view.webContents;
       await contents.session.clearStorageData();
+      await contents.session.clearCache().catch(() => {});
+      contents.session.flushStorageData();
+      await contents.session.cookies.flushStore();
       this.setState({
         authenticated: false,
         loading: true,

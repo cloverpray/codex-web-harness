@@ -1187,7 +1187,7 @@ function SetupSurface({
           description={devProfile ? copy.devStepInstallBody : copy.stepInstallBody}
             disabled={busy
               || (!snapshot.smokePassed && snapshot.state.coreSetupComplete !== true)
-              || (!devProfile && snapshot.state.coreSetupComplete === true && snapshot.state.codexCatalogVerified !== true)}
+              }
           index={manualInteraction ? 1 : 3}
           onAction={install}
           repeatable
