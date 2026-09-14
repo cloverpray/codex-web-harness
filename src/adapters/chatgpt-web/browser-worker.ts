@@ -3497,12 +3497,27 @@ export class ChatGptBrowserWorker {
       await throwIfChatGptTerminalErrorAlert(responseTurn.locator);
       let snapshot = await this.observeBoundResponse(responseTurn, responseDomCache);
       if (!snapshot.responsePresent && await responseTurn.locator.count() !== 1) {
-        const rebound = await this.reconcileAssistantTurnBinding(
-          page,
-          submissionBaseline,
-          responseTurn,
-          abortSignal,
-        );
+        let rebound: ChatGptAssistantTurnBinding;
+        try {
+          rebound = await this.reconcileAssistantTurnBinding(page, submissionBaseline, responseTurn, abortSignal);
+        } catch (error) {
+          // During a multipart acknowledgement ChatGPT can discard the short-lived assistant
+          // shell before assigning a message id. If the page exposes exactly one new response and
+          // no new user turn, it is safe to follow that unique candidate; ordinary turns retain
+          // the stricter provenance check in reconcileAssistantTurnBinding.
+          if (!(error instanceof Error) || !error.message.includes("without matching message IDs")) throw error;
+          const state = await this.submissionDomState(page, submissionBaseline.domCache, abortSignal);
+          const accepted = new Set(responseTurn.acceptedTurnIdentities);
+          if (state.userIdentities.some(identity => !accepted.has(identity))) throw error;
+          const identity = chatGptNewTurnIdentity(submissionBaseline.initialTurnIdentities, state.responseIdentities);
+          if (!identity) throw error;
+          rebound = {
+            identity,
+            locator: page.locator(`[data-turn-id=${JSON.stringify(identity)}]`),
+            acceptedTurnIdentities: state.turnIdentities,
+            messageIds: state.responseMessageIds?.[identity] ?? [],
+          };
+        }
         if (rebound.identity !== responseTurn.identity) {
           responseTurn = rebound;
           responseDomCache.key = undefined;
