@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve, toNamespacedPath } from "node:path";
-import { extractChatGptTurnEnvironment, extractChatGptTurnIdentity } from "../src/adapters/chatgpt-web/environment";
+import { extractChatGptCompactionSourceRevision, extractChatGptTurnEnvironment, extractChatGptTurnIdentity } from "../src/adapters/chatgpt-web/environment";
 import { rememberCompactionContinuation } from "../src/adapters/chatgpt-web/compaction-continuation";
 import { encodeCompactionSummary, SUMMARY_PREFIX } from "../src/responses/compaction";
 import { ChatGptThreadEnvironmentStore } from "../src/adapters/chatgpt-web/thread-environment";
@@ -973,6 +973,14 @@ ${withSubagents ? "  <subagents>\n    - 01a09add-49fa-7211-83ee-55ff0001f1f1: Go
     write(native);
     (wire.content as Array<{text:string}>)[0]!.text = native.content[0]!.text.replace("2026-09-13", "2026-09-14");
     expect(() => store.resolve(request)).toThrow("differs from its native Codex record");
+  });
+
+  test("compaction source falls back to canonical context when raw input carries only its control item", () => {
+    const request = resumedRootFixture().request;
+    request._compactionRequest = true;
+    (request._rawBody as { input: unknown[] }).input = [{ type: "compaction_trigger" }];
+    request.context.messages = [{ role: "user", content: "Continue the current task", timestamp: 42 }];
+    expect(extractChatGptCompactionSourceRevision(request).content).toBe("Continue the current task");
   });
 
   test("unchanged tool rounds coalesce environment persistence but permission changes persist immediately", () => {

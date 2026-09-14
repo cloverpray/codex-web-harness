@@ -280,8 +280,22 @@ export function chatGptTurnUserRevisionHistory(parsed: CodexParsedRequest): Chat
 export function extractChatGptCompactionSourceRevision(parsed: CodexParsedRequest): ChatGptTurnUserRevision {
   if (!parsed._compactionRequest) throw new Error("ChatGPT web compaction source requires a compaction request");
   const revision = latestChatGptTurnUserRevision(parsed, extractChatGptTurnIdentity(parsed).turnId);
-  if (!revision) throw new Error("ChatGPT web compaction requires a source user message");
-  return revision;
+  if (revision) return revision;
+
+  // A native compaction request can carry only the control item in its raw wire input while
+  // parseRequest still retains the canonical conversation messages. Use that already-parsed
+  // source as a bounded fallback; never infer it from assistant/tool text or environment XML.
+  const source = [...parsed.context.messages].reverse().find(message => {
+    if (message.role !== "user") return false;
+    const text = typeof message.content === "string"
+      ? message.content
+      : message.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+    return text.trim().length > 0
+      && !/^<environment_context>[\s\S]*<\/environment_context>$/.test(text.trim())
+      && !isReadableCompactionSummaryText(text.trim());
+  });
+  if (!source) throw new Error("ChatGPT web compaction requires a source user message");
+  return { content: source.content, ...(source.timestamp ? { itemId: `context-${source.timestamp}` } : {}) };
 }
 
 /** A completed checkpoint binds an older instruction to this exact continuing native turn. */

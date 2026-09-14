@@ -117,3 +117,7 @@ Successful large native command outputs use recoverable content-addressed previe
 ## 5.0.7-alpha.15 — native midnight context with subagent roster
 
 Accept the optional UUID/name subagent roster in a native calendar delta. Exact rollout content, current-turn provenance and the following date-only world-state update remain mandatory. Does not change database permissions or tool safety decisions. Regression reproduces both tagged and untagged wire variants before the fix.
+
+## 5.0.7-alpha.16 — compaction source fallback
+
+When a native compaction request carries only its control item in raw input, recover the latest source user message from the already-parsed canonical context. Environment XML and compaction summaries remain excluded; existing rollout provenance and turn checks remain mandatory.
