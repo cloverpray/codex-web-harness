@@ -278,14 +278,12 @@ function emitBrowserCompletion(outcome: ChatGptBrowserOutcome, usage: CodexUsage
 
 function emitTraceEvents(trace: ChatGptTraceEvent[], emit: (event: AdapterEvent) => void): void {
   for (const event of trace) {
-    // ChatGPT exposes planning prose as a visible commentary block. Forwarding every block as a
-    // normal assistant message made the terminal show long internal progress essays (Goal/H1/
-    // input/verification) instead of the native Codex-style concise tool trace. Commentary is
-    // still used internally for DOM completion and remains available in diagnostics; only the
-    // user-facing Responses stream is filtered. Reasoning summaries retain their normal channel.
-    if (event.kind === "commentary") continue;
     if (!event.continuation) emit({ type: "assistant_boundary" });
-    emit({ type: "thinking_delta", thinking: event.text });
+    if (event.kind === "commentary") {
+      emit({ type: "text_delta", text: event.text, phase: "commentary" });
+    } else {
+      emit({ type: "thinking_delta", thinking: event.text });
+    }
   }
 }
 
