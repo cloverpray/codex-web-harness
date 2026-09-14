@@ -2942,7 +2942,23 @@ export class ChatGptBrowserWorker {
         }
       } catch (error) {
         lastIdentityError = error;
-        if (!(error instanceof Error) || !error.message.includes("without matching message IDs") || attempt === 2) throw error;
+        if (!(error instanceof Error) || !error.message.includes("without matching message IDs")) throw error;
+        if (attempt === 2) {
+          // A retained ChatGPT page can remount the entire history list, replacing every turn id
+          // and message id at once. If exactly one response is newer than the original baseline
+          // and no user turn appeared, that single candidate is still unambiguous.
+          const state = await this.submissionDomState(page, baseline.domCache, signal);
+          const acceptedTurns = new Set(binding.acceptedTurnIdentities);
+          if (state.userIdentities.some(identity => !acceptedTurns.has(identity))) throw error;
+          const candidate = chatGptNewTurnIdentity(baseline.initialTurnIdentities, state.responseIdentities);
+          if (candidate) return {
+            identity: candidate,
+            locator: page.locator(`[data-turn-id=${JSON.stringify(candidate)}]`),
+            acceptedTurnIdentities: state.turnIdentities,
+            messageIds: state.responseMessageIds?.[candidate] ?? [],
+          };
+          throw error;
+        }
       }
       await withBrowserTurnAbort(new Promise(resolveSleep => setTimeout(resolveSleep, 180)), signal);
     }
