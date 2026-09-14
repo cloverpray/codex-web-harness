@@ -61,6 +61,11 @@ const jsonArgumentsSchema = z.record(z.string(), z.unknown()).default({});
 export const CHATGPT_WEB_AGENT_WAIT_POLL_MS = 30_000;
 export const CHATGPT_WEB_TEACHER_WAIT_MS = 55_000;
 const AGENT_WAIT_TRANSPORT_RULE = "ChatGPT Web transport rule: use timeout_ms=55000 when waiting only for an evidence-only teacher that cannot call tools; use timeout_ms=30000 for tool-capable workers to release the shared MCP channel more often. Both waits return early when native completion is reported. Keep native arguments unchanged. A timeout is not failure and does not authorize interrupt=true, closing a running agent, or spawning a replacement. Retain the same agent handle, do independent work when available, then wait again. Do not loop multiple waits inside one exec invocation.";
+// A Native2/MCP session termination is terminal for the current Codex process. Retrying the
+// same bridge call only produces another 32600 and can trap a research goal in a retry storm.
+// The bridge cannot resurrect the parent stdio session; the user must resume in a new Codex
+// process after inspecting the preserved artifacts.
+const SESSION_TERMINATION_RULE = "If a native Codex tool returns JSON-RPC 32600 (Session terminated), stop calling native or bridge tools for this turn. Do not retry, poll inventory, wait, or update the goal through that handle. Preserve the current RUN/checkpoint, report the terminal transport failure, and resume only from a newly started Codex session.";
 // The OpenAI tunnel currently owns a two-minute command-response deadline. The local MCP server
 // must settle first so an abandoned native tool call is returned as an MCP error instead of
 // letting the tunnel tear down and poison its long-lived stdio transport.
@@ -171,7 +176,7 @@ function isGatewayAgentWaitTool(name: string): boolean {
 function browserToolDescription(tool: CodexTool): string {
   if (isAgentWaitTool(tool)) return `${tool.description}\n\n${AGENT_WAIT_TRANSPORT_RULE}`;
   if (!tool.namespace && tool.name === "exec") {
-    return `${tool.description}\n\n${AGENT_WAIT_TRANSPORT_RULE} This rule is enforced for wait_agent calls made inside exec; recursive raw exec is unavailable.`;
+    return `${tool.description}\n\n${AGENT_WAIT_TRANSPORT_RULE} This rule is enforced for wait_agent calls made inside exec; recursive raw exec is unavailable.\n\n${SESSION_TERMINATION_RULE}`;
   }
   return tool.description;
 }
