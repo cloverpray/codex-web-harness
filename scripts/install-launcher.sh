@@ -77,7 +77,7 @@ if [ "$OS" = "Darwin" ]; then
   mkdir "$STAGE_DIR"
   ditto -x -k "$TEMP_DIR/$ASSET" "$STAGE_DIR"
   SOURCE_APP="$STAGE_DIR/code_web_harness_alpha.app"
-  if [ ! -d "$SOURCE_APP" ] || [ ! -x "$SOURCE_APP/Contents/MacOS/Codex Web GPT" ]; then
+  if [ ! -d "$SOURCE_APP" ] || [ ! -x "$SOURCE_APP/Contents/MacOS/code_web_harness_alpha" ]; then
     echo "Launcher archive is incomplete" >&2
     exit 1
   fi
