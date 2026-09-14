@@ -1604,6 +1604,7 @@ interface ChatGptResponseDomSnapshot {
   traceBlocks: ChatGptVisibleTraceBlock[];
   messageIds?: string[];
   refusalMarkerVisible?: boolean;
+  sessionTerminatedMarkerVisible?: boolean;
 }
 
 interface ChatGptResponseDomCache {
@@ -4208,6 +4209,7 @@ export class ChatGptBrowserWorker {
             .map(message => message.getAttribute("data-message-id") ?? "").filter(Boolean),
           // Observation only: a displayed phrase does not authenticate its origin or cause.
           // Do not turn model quotations into terminal errors or automatic retries.
+          sessionTerminatedMarkerVisible: /Session terminated/i.test(root.textContent ?? ""),
           refusalMarkerVisible: /blocked by OpenAI['’]s safety checks/i.test(root.textContent ?? ""),
           visibleText: renderedRoots.map(candidate => candidate.innerText.trim()).filter(Boolean).join("\n\n"),
           fullHtml: renderedRoots.map(candidate => candidate.innerHTML).join(""),
@@ -4417,6 +4419,7 @@ export class ChatGptBrowserWorker {
     let diagnosticPage: Page | undefined;
     let submissionMayBeRunning = false;
     let sawRefusalMarker = false;
+    let sawSessionTerminatedMarker = false;
     const observationStartedAt = Date.now();
     const submissionLifecycle = {
       onSendActivated: async () => {
@@ -4997,6 +5000,15 @@ export class ChatGptBrowserWorker {
             brokerProgressRevision: turn.externalProgress?.snapshot().revision ?? null,
           })}`);
           await diagnostics.capture(page, "response-refusal-phrase-observed");
+        }
+        if (snapshot.sessionTerminatedMarkerVisible && !sawSessionTerminatedMarker) {
+          sawSessionTerminatedMarker = true;
+          console.info(`[chatgpt-web] response_surface_marker ${JSON.stringify({
+            traceId: turn.traceId, marker: "session_terminated_phrase", origin: "unverified_response_surface",
+            policyVerdict: "unknown", elapsedMs: Date.now() - observationStartedAt,
+            brokerProgressRevision: turn.externalProgress?.snapshot().revision ?? null,
+          })}`);
+          await diagnostics.capture(page, "response-session-terminated-phrase-observed");
         }
         if (snapshot.responsePresent) consecutiveObservationRebinds = 0;
         // The page was read successfully, so the fault budget is genuinely consecutive even when

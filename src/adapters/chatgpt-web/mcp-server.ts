@@ -61,11 +61,8 @@ const jsonArgumentsSchema = z.record(z.string(), z.unknown()).default({});
 export const CHATGPT_WEB_AGENT_WAIT_POLL_MS = 30_000;
 export const CHATGPT_WEB_TEACHER_WAIT_MS = 55_000;
 const AGENT_WAIT_TRANSPORT_RULE = "ChatGPT Web transport rule: use timeout_ms=55000 when waiting only for an evidence-only teacher that cannot call tools; use timeout_ms=30000 for tool-capable workers to release the shared MCP channel more often. Both waits return early when native completion is reported. Keep native arguments unchanged. A timeout is not failure and does not authorize interrupt=true, closing a running agent, or spawning a replacement. Retain the same agent handle, do independent work when available, then wait again. Do not loop multiple waits inside one exec invocation.";
-// A Native2/MCP session termination is terminal for the current Codex process. Retrying the
-// same bridge call only produces another 32600 and can trap a research goal in a retry storm.
-// The bridge cannot resurrect the parent stdio session; the user must resume in a new Codex
-// process after inspecting the preserved artifacts.
-const SESSION_TERMINATION_RULE = "If a native Codex tool returns JSON-RPC 32600 (Session terminated), stop calling native or bridge tools for this turn. Do not retry, poll inventory, wait, or update the goal through that handle. Preserve the current RUN/checkpoint, report the terminal transport failure, and resume only from a newly started Codex session.";
+// A terminated connector session does not identify which process ended or why.
+const SESSION_TERMINATION_RULE = "If a tool returns JSON-RPC 32600 (Session terminated), report the exact tool and error, stop using that failed session, and preserve task handles and artifacts. A new turn token alone does not establish transport recovery. Do not retry unchanged or infer a safety rejection, command execution status, or a required Codex process restart from this error. Resume dependent work only after transport recovery is verified.";
 // The OpenAI tunnel currently owns a two-minute command-response deadline. The local MCP server
 // must settle first so an abandoned native tool call is returned as an MCP error instead of
 // letting the tunnel tear down and poison its long-lived stdio transport.
@@ -487,7 +484,11 @@ export async function runChatGptMcpServer(options: {
 }): Promise<void> {
   const contract = options.contract ?? "native";
   const persistDiagnostic = createMcpDiagnosticLog(join(getConfigDir(), "diagnostics", "mcp"));
+  let requestSequenceForHash: (hash: string) => number | undefined = () => undefined;
   const diagnostic = (event: string, fields: Record<string, unknown>) => {
+    if (fields.requestSequence === undefined && typeof fields.requestHash === "string") {
+      fields = { ...fields, requestSequence: requestSequenceForHash(fields.requestHash) };
+    }
     persistDiagnostic(event, fields);
     try { console.error(`[chatgpt-web-mcp] ${event} ${JSON.stringify(fields)}`); } catch {}
   };
@@ -1059,6 +1060,6 @@ export async function runChatGptMcpServer(options: {
   }
 
   const transport = new StdioServerTransport();
-  observeMcpTransport(transport, diagnostic);
+  requestSequenceForHash = observeMcpTransport(transport, diagnostic);
   await server.connect(transport);
 }

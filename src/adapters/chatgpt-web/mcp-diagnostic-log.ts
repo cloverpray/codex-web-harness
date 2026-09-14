@@ -21,7 +21,7 @@ export function createMcpDiagnosticLog(directory: string, options: { pid?: numbe
         ready = true;
       }
       // Deliberately exclude arbitrary fields, commands, scopes, tokens and raw errors.
-      const allowed = ["requestHash", "protocolErrorCode", "outcome", "callId", "tool", "stage", "elapsedMs", "policyVerdict", "bindingHash", "tokenHash", "reason", "evidence", "causes", "origin", "code", "dispatched", "turnActive", "retirementRequested"];
+      const allowed = ["requestSequence", "pendingCount", "delivery", "requestHash", "protocolErrorCode", "outcome", "callId", "tool", "stage", "elapsedMs", "policyVerdict", "bindingHash", "tokenHash", "reason", "evidence", "causes", "origin", "code", "dispatched", "turnActive", "retirementRequested"];
       const safe = Object.fromEntries(allowed.filter(k => fields[k] !== undefined).map(k => [k, fields[k]]));
       const line = JSON.stringify({ at: new Date().toISOString(), pid, event, phase: typeof fields.event === "string" ? fields.event : undefined, ...safe }) + "\n";
       if (Buffer.byteLength(line) > 8192) return;
