@@ -2911,25 +2911,43 @@ export class ChatGptBrowserWorker {
     if (boundCount > 1) {
       throw new Error(`ChatGPT exposed ${boundCount} DOM nodes for the bound assistant turn`);
     }
-    const state = await this.submissionDomState(page, baseline.domCache, signal);
-    const acceptedTurns = new Set(binding.acceptedTurnIdentities);
-    if (state.userIdentities.some(identity => !acceptedTurns.has(identity))) {
-      throw new Error("ChatGPT opened another user turn while the bound assistant response was detached");
+    // ChatGPT occasionally replaces the response container during streaming. There can be one
+    // or two DOM snapshots where the old node is detached before its stable message id is copied
+    // to the replacement. A short, bounded retry prevents that renderer race from surfacing as a
+    // false identity failure while retaining the provenance and user-turn safety checks.
+    let identity: string | undefined;
+    let lastIdentityError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const state = await this.submissionDomState(page, baseline.domCache, signal);
+      const acceptedTurns = new Set(binding.acceptedTurnIdentities);
+      if (state.userIdentities.some(identity => !acceptedTurns.has(identity))) {
+        throw new Error("ChatGPT opened another user turn while the bound assistant response was detached");
+      }
+      try {
+        identity = chatGptReboundTurnIdentity(
+          baseline.initialTurnIdentities,
+          binding.identity,
+          state.responseIdentities,
+          binding.messageIds,
+          state.responseMessageIds,
+        );
+        if (identity !== undefined) {
+          if (identity === binding.identity) return binding;
+          return {
+            identity,
+            locator: page.locator(`[data-turn-id=${JSON.stringify(identity)}]`),
+            acceptedTurnIdentities: state.turnIdentities,
+            messageIds: state.responseMessageIds?.[identity] ?? binding.messageIds,
+          };
+        }
+      } catch (error) {
+        lastIdentityError = error;
+        if (!(error instanceof Error) || !error.message.includes("without matching message IDs") || attempt === 2) throw error;
+      }
+      await withBrowserTurnAbort(new Promise(resolveSleep => setTimeout(resolveSleep, 180)), signal);
     }
-    const identity = chatGptReboundTurnIdentity(
-      baseline.initialTurnIdentities,
-      binding.identity,
-      state.responseIdentities,
-      binding.messageIds,
-      state.responseMessageIds,
-    );
-    if (!identity || identity === binding.identity) return binding;
-    return {
-      identity,
-      locator: page.locator(`[data-turn-id=${JSON.stringify(identity)}]`),
-      acceptedTurnIdentities: state.turnIdentities,
-      messageIds: state.responseMessageIds?.[identity] ?? binding.messageIds,
-    };
+    if (lastIdentityError) throw lastIdentityError;
+    return binding;
   }
 
   private async attachedPromptText(page: Page, abortSignal?: AbortSignal): Promise<string> {
