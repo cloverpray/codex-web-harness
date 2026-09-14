@@ -391,6 +391,7 @@ export interface StructuredCompactionOwner {
 }
 
 const structuredCompactionRuns = new Map<string, CachedCompactionRun>();
+const structuredCompactionFailures = new Map<string, { count: number; updatedAt: number }>();
 const structuredCompactionOwners = new Map<string, Promise<void>>();
 const structuredCompactionInterruptions = new Map<string, StructuredCompactionInterruption>();
 const STRUCTURED_COMPACTION_RUN_TTL_MS = 30 * 60_000;
@@ -435,6 +436,9 @@ function pruneStructuredCompactionRuns(): void {
   for (const [candidate, run] of structuredCompactionRuns) {
     if (!run.active && run.createdAt < cutoff) structuredCompactionRuns.delete(candidate);
   }
+  for (const [candidate, failure] of structuredCompactionFailures) {
+    if (failure.updatedAt < cutoff) structuredCompactionFailures.delete(candidate);
+  }
   pruneStructuredCompactionInterruptions(now);
 }
 
@@ -452,6 +456,13 @@ export function runStructuredCompactionOnce(
   pruneStructuredCompactionRuns();
   const existing = structuredCompactionRuns.get(key);
   if (existing) return existing.promise;
+  // Allow one transient retry, then retain the rejected promise for the TTL. This
+  // prevents a failed web handoff from spawning an unbounded browser/compaction
+  // storm when the native client replays the same turn.
+  const previousFailure = structuredCompactionFailures.get(key);
+  if (previousFailure && previousFailure.count >= 2) {
+    return Promise.reject(new Error("ChatGPT context handoff already failed twice for this native turn; start a fresh turn before retrying."));
+  }
   const interrupted = structuredCompactionInterruption(owner);
   if (interrupted) return Promise.reject(interrupted);
   const abort = new AbortController();
@@ -467,10 +478,20 @@ export function runStructuredCompactionOnce(
   const ownerSettlement = promise.then(() => false, () => true).then(async failed => {
     await Promise.allSettled(physicalSettlements);
     run.active = false;
+    if (!failed) structuredCompactionFailures.delete(key);
     if (structuredCompactionOwners.get(owner.ownerKey) === ownerSettlement) {
       structuredCompactionOwners.delete(owner.ownerKey);
     }
-    if (failed && structuredCompactionRuns.get(key) === run) structuredCompactionRuns.delete(key);
+    if (failed && structuredCompactionRuns.get(key) === run) {
+      const prior = structuredCompactionFailures.get(key);
+      const failure = { count: (prior?.count ?? 0) + 1, updatedAt: Date.now() };
+      structuredCompactionFailures.set(key, failure);
+      // Keep the second failure replayable so later observers cannot launch a
+      // third identical browser handoff. The first failure remains retryable for
+      // transient upstream recovery and preserves the existing retry contract.
+      if (failure.count >= 2) return;
+      structuredCompactionRuns.delete(key);
+    }
   });
   const run: CachedCompactionRun = {
     createdAt: Date.now(),

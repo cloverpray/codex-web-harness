@@ -462,7 +462,11 @@ export function createChatGptWebAdapter(
       // 300k-token multipart fallback makes the web composer create duplicate
       // turns and leaves no safe identity to resume. Ordinary turns may still
       // use Bigger Context, but compaction trims history before submission.
-      const experimentalMultipartParts = experimentalBiggerContext && !input._compactionRequest
+      const lastContextMessage = input.context.messages.at(-1);
+      const oversizedAtomicRecord = typeof lastContextMessage?.content === "string"
+        && lastContextMessage.content.length > 120_000;
+      const experimentalMultipartParts = experimentalBiggerContext
+        && (!input._compactionRequest || input.context.messages.length <= 1 || oversizedAtomicRecord)
         ? resolveBiggerContextMultipartParts(input, turnCapabilities)
         : undefined;
       return {
@@ -988,7 +992,15 @@ export function createChatGptWebAdapter(
                   armHandoffDeadline();
                   const operationSignal = AbortSignal.any([operatorSignal, handoffDeadline.signal]);
                   const sourceConversationKey = chatGptConversationKey(parsed, executionNamespace);
+                  let fallbackAttempted = false;
                   const runFreshCompactionFallback = async (reason: string): Promise<string> => {
+                    if (fallbackAttempted) {
+                      throw new ChatGptWebAdapterError(
+                        "ChatGPT context handoff fallback was already attempted for this native turn; inspect the existing task and start a fresh turn.",
+                        { status: 409, errorType: "invalid_request_error", code: "compaction_fallback_exhausted", retryable: false },
+                      );
+                    }
+                    fallbackAttempted = true;
                     console.warn(`[chatgpt-web] retained compaction fallback=${reason}`);
                     // The fallback is a new bounded phase. Each exact multipart acknowledgement
                     // and the final accepted compact prompt re-arms the five-minute liveness budget;
