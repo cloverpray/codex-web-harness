@@ -2538,7 +2538,14 @@ class BrowserHost {
       // Navigate every owned surface away from ChatGPT before clearing the persistent partition.
       // Clearing storage while a ChatGPT document is active can leave service-worker or cookie
       // writes racing the deletion, which made the next login silently reuse the old account.
-      await this.clearOwnedSessionForPasskey();
+      // During startup there may be no tab registry yet. Clear every owned
+      // surface when available, otherwise close the temporary auth surface and
+      // let the partition cleanup below remove the persistent session.
+      if (typeof this.clearOwnedSessionForPasskey === "function" && this.turnTabs instanceof Map) {
+        await this.clearOwnedSessionForPasskey();
+      } else if (this.authView) {
+        this.closeAuthView(this.authView, true, false);
+      }
       const contents = this.view.webContents;
       await contents.session.clearStorageData();
       await contents.session.clearCache().catch(() => {});
