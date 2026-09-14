@@ -33,6 +33,9 @@ export function compactCommandOutput(message: CodexToolResultMessage, directory 
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
     if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== text) return message;
     const preview = body.slice(0, 2400);
-    return { ...message, content: `${header}${preview}\n\n[Harness output preview; omitted ${body.length - preview.length} characters]\nCaptured-output artifact: ${path}\nSHA-256 (UTF-8): ${hash}\nThis file preserves exactly the received result, including its native header. Any upstream truncation remains; it cannot recover text already omitted by the native tool. Read bounded ranges of this artifact with native tools if needed; do not rerun the command to obtain the remaining captured text. Identical captured output reuses this immutable artifact; changed output has a new hash.\n` };
+    // Keep the model-visible representation compact. The full, byte-for-byte result remains in
+    // the artifact; putting the storage policy and hash explanation in every turn made the CLI
+    // render internal harness bookkeeping as if it were part of the user's answer.
+    return { ...message, content: `${header}${preview}\n\n[Harness output preview; omitted ${body.length - preview.length} characters]\nCaptured-output artifact: ${path}\nSHA-256 (UTF-8): ${hash}\nRead bounded ranges if the omitted output is needed; do not rerun the command.\n` };
   } catch { return message; } // Storage failure must not hide output or block a tool.
 }
