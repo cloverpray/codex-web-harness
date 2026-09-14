@@ -42,10 +42,10 @@ test("release comparison and platform assets are strict", () => {
   assert.equal(compareVersions("1.1.4", "1.1.4"), 0);
   assert.equal(compareVersions("1.1.3", "1.1.4"), -1);
   assert.equal(compareVersions("1.2.0", "1.1.99"), 1);
-  assert.equal(releaseAssetName("1.2.0", "darwin", "arm64"), "codex-web-gpt-1.2.0-mac-arm64.zip");
-  assert.equal(releaseAssetName("1.2.0", "darwin", "x64"), "codex-web-gpt-1.2.0-mac-x64.zip");
-  assert.equal(releaseAssetName("1.2.0", "win32", "x64"), "codex-web-gpt-1.2.0-win-x64.exe");
-  assert.equal(releaseAssetName("1.2.0", "linux", "x64"), "codex-web-gpt-1.2.0-linux-x64.AppImage");
+  assert.equal(releaseAssetName("1.2.0", "darwin", "arm64"), "code_web_harness_alpha-1.2.0-mac-arm64.zip");
+  assert.equal(releaseAssetName("1.2.0", "darwin", "x64"), "code_web_harness_alpha-1.2.0-mac-x64.zip");
+  assert.equal(releaseAssetName("1.2.0", "win32", "x64"), "code_web_harness_alpha-1.2.0-win-x64.exe");
+  assert.equal(releaseAssetName("1.2.0", "linux", "x64"), "code_web_harness_alpha-1.2.0-linux-x64.AppImage");
   assert.equal(releaseAssetName("1.2.0", "linux", "arm64"), null);
 });
 
@@ -94,8 +94,8 @@ test("startup check runs once and exposes only a newer complete release", async 
           tag_name: "v1.2.0",
           assets: [
             {
-              name: "codex-web-gpt-1.2.0-linux-x64.AppImage",
-              browser_download_url: "https://github.com/cloverpray/codex-web-harness/releases/download/v1.2.0/codex-web-gpt-1.2.0-linux-x64.AppImage",
+              name: "code_web_harness_alpha-1.2.0-linux-x64.AppImage",
+              browser_download_url: "https://github.com/cloverpray/codex-web-harness/releases/download/v1.2.0/code_web_harness_alpha-1.2.0-linux-x64.AppImage",
             },
             {
               name: "checksums.txt",
@@ -141,8 +141,8 @@ test("verified update is handed to one detached worker", async () => {
           tag_name: "v1.2.0",
           assets: [
             {
-              name: "codex-web-gpt-1.2.0-linux-x64.AppImage",
-              browser_download_url: "https://github.com/cloverpray/codex-web-harness/releases/download/v1.2.0/codex-web-gpt-1.2.0-linux-x64.AppImage",
+              name: "code_web_harness_alpha-1.2.0-linux-x64.AppImage",
+              browser_download_url: "https://github.com/cloverpray/codex-web-harness/releases/download/v1.2.0/code_web_harness_alpha-1.2.0-linux-x64.AppImage",
             },
             {
               name: "checksums.txt",
@@ -150,7 +150,7 @@ test("verified update is handed to one detached worker", async () => {
             },
           ],
         }),
-        downloadText: async () => `${hash}  codex-web-gpt-1.2.0-linux-x64.AppImage\n`,
+        downloadText: async () => `${hash}  code_web_harness_alpha-1.2.0-linux-x64.AppImage\n`,
         downloadFile: async (_url, destination) => fs.writeFileSync(destination, assetBody),
         sha256: (filePath) => require("node:crypto").createHash("sha256").update(fs.readFileSync(filePath)).digest("hex"),
         spawnWorker: (runtime, worker, job) => {
