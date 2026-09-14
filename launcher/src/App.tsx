@@ -1177,13 +1177,17 @@ function SetupSurface({
             title={copy.stepSmoke}
           />
         </> : null}
-        <SetupRow
-          action={snapshot.state.coreSetupComplete
-            ? devProfile ? copy.devReinstall : copy.reinstall
+          <SetupRow
+            action={snapshot.state.coreSetupComplete
+            ? devProfile
+              ? copy.devReinstall
+              : snapshot.state.codexCatalogVerified === true ? copy.reinstall : copy.awaitingCodex
             : devProfile ? copy.devInstall : copy.install}
           complete={snapshot.state.codexCatalogVerified === true}
           description={devProfile ? copy.devStepInstallBody : copy.stepInstallBody}
-          disabled={busy || (!snapshot.smokePassed && snapshot.state.coreSetupComplete !== true)}
+            disabled={busy
+              || (!snapshot.smokePassed && snapshot.state.coreSetupComplete !== true)
+              || (!devProfile && snapshot.state.coreSetupComplete === true && snapshot.state.codexCatalogVerified !== true)}
           index={manualInteraction ? 1 : 3}
           onAction={install}
           repeatable
