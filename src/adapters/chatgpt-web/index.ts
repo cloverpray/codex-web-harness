@@ -458,7 +458,11 @@ export function createChatGptWebAdapter(
       : undefined;
     const compileOptionsFor = (input: CodexParsedRequest) => {
       if (manualRequest) return {};
-      const experimentalMultipartParts = experimentalBiggerContext
+      // Context handoff must stay on the bounded compaction envelope. Sending a
+      // 300k-token multipart fallback makes the web composer create duplicate
+      // turns and leaves no safe identity to resume. Ordinary turns may still
+      // use Bigger Context, but compaction trims history before submission.
+      const experimentalMultipartParts = experimentalBiggerContext && !input._compactionRequest
         ? resolveBiggerContextMultipartParts(input, turnCapabilities)
         : undefined;
       return {
