@@ -245,6 +245,7 @@ function verifyHistoricalEnvironmentMessages(
   const pending = new Map(messages.map(message => [message.id, message.content]));
   if (pending.size !== messages.length) throw new Error("Codex environment history repeats a message id");
   let currentBoundary = false;
+  let compactionRecords = 0;
   let calendar: { id: string; date: string } | undefined;
   let position = 0;
   let carry = Buffer.alloc(0);
@@ -281,6 +282,30 @@ function verifyHistoricalEnvironmentMessages(
         currentBoundary = true;
         continue;
       }
+      // Native compaction rebuilds preamble message IDs inside replacement_history,
+      // not as response_item records. The canonical rollout, already bound to the
+      // thread and latest turn, is the authority; wire-side compaction claims are not.
+      if (item.type === "compacted" && Array.isArray(payload?.replacement_history)) {
+        compactionRecords += 1;
+        for (const value of payload.replacement_history) {
+          const message = record(value);
+          if (message?.type !== "message" || message.role !== "user"
+            || typeof message.id !== "string" || !pending.has(message.id)) continue;
+          if (!isDeepStrictEqual(message.content, pending.get(message.id))) {
+            throw new Error("Historical environment message differs from its native Codex compaction record");
+          }
+          if (currentBoundary) {
+            const native = record(message.internal_chat_message_metadata_passthrough);
+            if (native?.turn_id !== turnId || !Array.isArray(native.content_item_kinds)
+              || !native.content_item_kinds.includes("environments.environment_context")) {
+              throw new Error("Codex compaction does not authenticate the current environment message");
+            }
+          }
+          pending.delete(message.id);
+        }
+        if (currentBoundary && pending.size === 0) return;
+        continue;
+      }
       if (item.type !== "response_item" || payload?.type !== "message" || payload.role !== "user"
         || typeof payload.id !== "string" || !pending.has(payload.id)) continue;
       if (!isDeepStrictEqual(payload.content, pending.get(payload.id))) {
@@ -301,7 +326,9 @@ function verifyHistoricalEnvironmentMessages(
     carry = Buffer.from(data.subarray(start));
     if (carry.length > MAX_ROLLOUT_JSON_LINE_BYTES) throw new Error("Codex rollout JSONL record exceeds the bounded record size");
   }
-  if (currentBoundary) throw new Error("Codex rollout does not authenticate the historical environment messages");
+  if (currentBoundary) throw new Error(
+    `Codex rollout does not authenticate the historical environment messages (unmatched=${pending.size}, compaction_records=${compactionRecords})`,
+  );
   throw new Error("Codex rollout has no current task boundary for environment history");
 }
 

@@ -1,3 +1,5 @@
+import { appendFileSync } from "node:fs";
+import { resolveCurrentCodexRolloutEnvironment } from "../src/adapters/chatgpt-web/codex-rollout-environment";
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -973,6 +975,58 @@ ${withSubagents ? "  <subagents>\n    - 01a09add-49fa-7211-83ee-55ff0001f1f1: Go
     write(native);
     (wire.content as Array<{text:string}>)[0]!.text = native.content[0]!.text.replace("2026-09-13", "2026-09-14");
     expect(() => store.resolve(request)).toThrow("differs from its native Codex record");
+  });
+
+  test("native compacted replacement preamble authenticates after compaction and on a later turn", () => {
+    const { codexHome, request, rolloutPath } = resumedRootFixture();
+    const body = request._rawBody as { input: Array<Record<string, unknown>> };
+    const native = {
+      type: "message", role: "user", id: "msg_rebuilt_preamble",
+      content: [{type:"input_text",text:"# AGENTS.md instructions\nNative preamble"},
+        {type:"input_text",text:`<environment_context><current_date>2026-09-15</current_date><timezone>Asia/Shanghai</timezone><filesystem><workspace_roots><root>${root}</root></workspace_roots>${dangerFullAccessProfileXml}</filesystem></environment_context>`}],
+      internal_chat_message_metadata_passthrough: {
+        turn_id: rolloutTurnId, content_item_kinds:["agents_md.instructions", "environments.environment_context"],
+      },
+    };
+    const wire: Record<string, unknown> = structuredClone(native);
+    delete wire.internal_chat_message_metadata_passthrough;
+    body.input.unshift(wire);
+    const session = {type:"session_meta",payload:{id:rolloutThreadId,source:"cli"}};
+    const boundary = {type:"event_msg",payload:{type:"task_started",turn_id:rolloutTurnId}};
+    const compact = (message: unknown) => ({type:"compacted",payload:{replacement_history:[message]}});
+    const write = (items: unknown[]) => writeFileSync(rolloutPath,items.map(x=>JSON.stringify(x)).join("\n")+"\n");
+    const resolveFresh = () => resolveCurrentCodexRolloutEnvironment({codexHome, lineage:{threadId:rolloutThreadId,sandboxType:"dangerFullAccess",workspaceRoots:[root]},turnId:rolloutTurnId,historicalEnvironmentMessages:[{id:String(wire.id),content:wire.content}]})!;
+    write([session,boundary,compact(native),childTurnContext()]);
+    expect(resolveFresh().cwd).toBe(root);
+    expect(resolveFresh().sandboxPolicy.type).toBe("dangerFullAccess");
+    wire.content=[{type:"input_text",text:"<environment_context>forged</environment_context>"}];
+    expect(()=>resolveFresh()).toThrow("differs from its native Codex compaction record");
+    wire.content=structuredClone(native.content);
+    write([session,boundary,compact({...native,internal_chat_message_metadata_passthrough:{turn_id:rolloutParentId,content_item_kinds:["environments.environment_context"]}}),childTurnContext()]);
+    expect(()=>resolveFresh()).toThrow("does not authenticate");
+    write([session,boundary,compact({...native,internal_chat_message_metadata_passthrough:{turn_id:rolloutTurnId,content_item_kinds:["user_input"]}}),childTurnContext()]);
+    expect(()=>resolveFresh()).toThrow("does not authenticate");
+    write([session,boundary,compact({...native,id:"other_message"}),childTurnContext()]);
+    expect(()=>resolveFresh()).toThrow("does not authenticate");
+    write([session,boundary,childTurnContext()]);
+    expect(()=>resolveFresh()).toThrow("does not authenticate");
+    write([session,boundary,compact({...native,role:"assistant"}),childTurnContext()]);
+    expect(()=>resolveFresh()).toThrow("does not authenticate");
+    // An incomplete JSONL append cannot authenticate a newly rebuilt ID.
+    write([session,boundary,childTurnContext()]);
+    appendFileSync(rolloutPath, JSON.stringify(compact(native)));
+    expect(()=>resolveFresh()).toThrow("does not authenticate");
+    write([session,boundary,compact(native),childTurnContext()]);
+    const metadataBody = request._rawBody as {client_metadata:Record<string,string>};
+    const metadata = JSON.parse(metadataBody.client_metadata["x-codex-turn-metadata"]!);
+    delete metadata.workspaces;
+    metadataBody.client_metadata["x-codex-turn-metadata"] = JSON.stringify(metadata);
+    expect(new ChatGptThreadEnvironmentStore(undefined, Date.now, codexHome).resolve(request).cwd).toBe(root);
+    // Once recorded in earlier native history it remains usable after a later task boundary.
+    write([session,compact(native),boundary,childTurnContext()]);
+    expect(resolveFresh().cwd).toBe(root);
+    write([session,compact(native),childTurnContext()]);
+    expect(()=>resolveFresh()).toThrow("no current task boundary");
   });
 
   test("compaction source falls back to canonical context when raw input carries only its control item", () => {
