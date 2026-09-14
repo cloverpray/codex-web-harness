@@ -1209,7 +1209,9 @@ describe("ChatGPT outer-native harness v4", () => {
           expect(events.at(-1)).toMatchObject({ type: "error", code,
             retryable: phase === "prepared" });
         }
-        expect(starts).toBe(phase === "prepared" ? 2 : 1);
+        // A submitted transient error is replayed once only when no tool or response activity
+        // occurred; the second failure is surfaced without another replay.
+        expect(starts).toBe(phase === "prepared" || phase === "submitted" ? 2 : 1);
       } finally {
         (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = originalRun;
       }

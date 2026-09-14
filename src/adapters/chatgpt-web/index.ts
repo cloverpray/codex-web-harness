@@ -338,6 +338,10 @@ function submittedTurnFailure(session: ChatGptTurnSession, error: unknown): Erro
   );
 }
 
+class ChatGptSafeAutoRetry extends Error {
+  readonly code = "chatgpt_safe_auto_retry";
+}
+
 function currentToolResults(parsed: CodexParsedRequest, session: ChatGptTurnSession): CodexToolResultMessage[] {
   const byId = new Map<string, CodexToolResultMessage>();
   for (const message of parsed.context.messages) {
@@ -849,6 +853,7 @@ export function createChatGptWebAdapter(
       }
     },
     async runTurn(parsed, incoming, emit) {
+      let safeRetryUsed = false;
       const runChatGptWebTurn = async (): Promise<void> => {
         const manualRequest = isChatGptWebZeroRiskBackendModel(parsed.modelId);
         if (manualRequest !== manualInteraction) {
@@ -1432,6 +1437,24 @@ export function createChatGptWebAdapter(
             throw error;
           }
           const turnError = submittedTurnFailure(session, error);
+          const progress = session.runtime.mode === "tools"
+            ? session.runtime.externalProgress.snapshot()
+            : undefined;
+          const safeToRetry = !manualRequest
+            && turnError instanceof ChatGptWebAdapterError
+            && (turnError.code === "upstream_server_error" || turnError.code === "rate_limit_exceeded")
+            && session.runtime.submission?.phase === "accepted"
+            && session.outstanding().length === 0
+            && session.runtime.text.value().length === 0
+            && !session.runtime.trace.hasActivity()
+            && (!progress || progress.revision === 0)
+            && !safeRetryUsed;
+          if (safeToRetry) {
+            safeRetryUsed = true;
+            console.warn(`[chatgpt-web] safe automatic retry after upstream error; no tool or response activity trace=${session.traceId ?? "unknown"}`);
+            chatGptTurnSessions.retire(executionKey, session);
+            throw new ChatGptSafeAutoRetry();
+          }
           const handledError = turnError instanceof ChatGptWebAdapterError && turnError.retryable
             ? chatGptWebTurnRetryPolicy.recordRetryableFailure(retryKey, turnError)
             : turnError;
@@ -1475,7 +1498,17 @@ export function createChatGptWebAdapter(
       );
       try {
         emit({ type: "heartbeat" });
-        await runChatGptWebTurn();
+        for (;;) {
+          try {
+            await runChatGptWebTurn();
+            break;
+          } catch (error) {
+            if (!(error instanceof ChatGptSafeAutoRetry)) throw error;
+            emit({ type: "heartbeat" });
+            await new Promise(resolveSleep => setTimeout(resolveSleep, 750));
+            console.info("[chatgpt-web] starting a fresh browser surface for the one-time safe retry");
+          }
+        }
       } finally {
         clearInterval(heartbeat);
       }

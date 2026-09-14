@@ -55,11 +55,13 @@ interface TraceWaiter {
 
 export class ChatGptTraceFeed {
   private readonly queued: ChatGptTraceEvent[] = [];
+  private totalPushed = 0;
   private readonly waiters = new Set<TraceWaiter>();
 
   push(event: ChatGptTraceEvent): void {
     const normalized = event.continuation ? event.text : event.text.trim();
     if (!normalized) return;
+    this.totalPushed += 1;
     const normalizedEvent = { ...event, text: normalized };
     this.queued.push(normalizedEvent);
     const waiter = this.waiters.values().next().value as TraceWaiter | undefined;
@@ -67,6 +69,10 @@ export class ChatGptTraceFeed {
     this.waiters.delete(waiter);
     if (waiter.signal && waiter.onAbort) waiter.signal.removeEventListener("abort", waiter.onAbort);
     waiter.resolve();
+  }
+
+  hasActivity(): boolean {
+    return this.totalPushed > 0;
   }
 
   drain(): ChatGptTraceEvent[] {
