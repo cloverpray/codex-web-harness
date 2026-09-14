@@ -935,7 +935,7 @@ describe("trusted Codex task environment continuity", () => {
     expect(() => store.resolve(request)).toThrow("no current task boundary");
   });
 
-  for (const tagged of [false, true]) test(`midnight date delta authenticates native current-turn provenance (wire tagged: ${tagged})`, () => {
+  for (const withSubagents of [false, true]) for (const tagged of [false, true]) test(`midnight date delta authenticates native current-turn provenance (wire tagged: ${tagged}, subagents: ${withSubagents})`, () => {
     const { codexHome, request, rolloutPath } = resumedRootFixture();
     const body = request._rawBody as { client_metadata: Record<string, string>; input: Array<Record<string, unknown>> };
     const metadata = JSON.parse(body.client_metadata["x-codex-turn-metadata"]!);
@@ -947,7 +947,7 @@ describe("trusted Codex task environment continuity", () => {
   <current_date>2026-09-13</current_date>
   <timezone>Asia/Shanghai</timezone>
   <filesystem><workspace_roots><root>${root}</root></workspace_roots>${dangerFullAccessProfileXml}</filesystem>
-</environment_context>` }],
+${withSubagents ? "  <subagents>\n    - 01a09add-49fa-7211-83ee-55ff0001f1f1: Goodall\n  </subagents>\n" : ""}</environment_context>` }],
       internal_chat_message_metadata_passthrough: { turn_id: rolloutTurnId, content_item_kinds: ["environments.environment_context"] },
     };
     const wire: Record<string, unknown> = structuredClone(native);

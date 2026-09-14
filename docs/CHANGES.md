@@ -113,3 +113,7 @@ Native failed-command results keep the original output and exit code, distinguis
 ## 5.0.7-alpha.14
 
 Successful large native command outputs use recoverable content-addressed previews in live MCP results and tool-capable replay. Failures, running handles, read-only and compaction evidence remain intact. Add metadata-only context accounting/submission metrics and bounded hash-keyed token-count caching. See CONTEXT_OUTPUTS.zh-CN.md for limits and offline measurements.
+
+## 5.0.7-alpha.15 — native midnight context with subagent roster
+
+Accept the optional UUID/name subagent roster in a native calendar delta. Exact rollout content, current-turn provenance and the following date-only world-state update remain mandatory. Does not change database permissions or tool safety decisions. Regression reproduces both tagged and untagged wire variants before the fix.

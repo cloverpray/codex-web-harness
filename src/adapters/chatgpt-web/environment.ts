@@ -142,7 +142,7 @@ export function chatGptCalendarDeltaDate(content: unknown): string | undefined {
   if (!Array.isArray(content) || content.length !== 1) return undefined;
   const part = record(content[0]);
   if (part?.type !== "input_text" || typeof part.text !== "string") return undefined;
-  return /^<environment_context>\s*<current_date>(\d{4}-\d{2}-\d{2})<\/current_date>\s*(?:<timezone>[^<]+<\/timezone>\s*)?(?:<filesystem>[\s\S]*<\/filesystem>\s*)?<\/environment_context>$/.exec(part.text.trim())?.[1];
+  return /^<environment_context>\s*<current_date>(\d{4}-\d{2}-\d{2})<\/current_date>\s*(?:<timezone>[^<]+<\/timezone>\s*)?(?:<filesystem>[\s\S]*<\/filesystem>\s*)?(?:<subagents>\s*(?:- [0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}: [^<>\r\n]+\s*)*<\/subagents>\s*)?<\/environment_context>$/.exec(part.text.trim())?.[1];
 }
 
 /** These are claims to locate in native history, never a source of filesystem authority. */
