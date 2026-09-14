@@ -47,7 +47,7 @@ case "$VERSION" in
   *[!A-Za-z0-9._-]*) echo "Invalid release version: $VERSION" >&2; exit 1 ;;
 esac
 
-ASSET="codex-web-gpt-$VERSION-$PLATFORM-$ARCH.$EXTENSION"
+ASSET="code_web_harness_alpha-$VERSION-$PLATFORM-$ARCH.$EXTENSION"
 BASE_URL="https://github.com/$REPOSITORY/releases/download/v$VERSION"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-web-gpt-launcher.XXXXXX")"
 trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
@@ -76,7 +76,7 @@ if [ "$OS" = "Darwin" ]; then
   STAGE_DIR="$TEMP_DIR/stage"
   mkdir "$STAGE_DIR"
   ditto -x -k "$TEMP_DIR/$ASSET" "$STAGE_DIR"
-  SOURCE_APP="$STAGE_DIR/Codex Web GPT.app"
+  SOURCE_APP="$STAGE_DIR/code_web_harness_alpha.app"
   if [ ! -d "$SOURCE_APP" ] || [ ! -x "$SOURCE_APP/Contents/MacOS/Codex Web GPT" ]; then
     echo "Launcher archive is incomplete" >&2
     exit 1
@@ -85,7 +85,7 @@ if [ "$OS" = "Darwin" ]; then
     INSTALL_DIR="$HOME/Applications"
     mkdir -p "$INSTALL_DIR"
   fi
-  TARGET_APP="$INSTALL_DIR/Codex Web GPT.app"
+  TARGET_APP="$INSTALL_DIR/code_web_harness_alpha.app"
   if pgrep -x "Codex Web GPT" >/dev/null 2>&1; then
     echo "Quit Codex Web GPT before updating it" >&2
     exit 1
@@ -105,7 +105,7 @@ fi
 LIB_DIR="${CODEX_WEB_GPT_LIB_DIR:-$HOME/.local/lib/codex-web-gpt}"
 BIN_DIR="${CODEX_WEB_GPT_BIN_DIR:-$HOME/.local/bin}"
 TARGET_DIR="$LIB_DIR/$VERSION"
-TARGET="$TARGET_DIR/Codex Web GPT.AppImage"
+TARGET="$TARGET_DIR/code_web_harness_alpha.AppImage"
 WRAPPER="$BIN_DIR/codex-web-gpt"
 CORE_HOME="${CODEX_CHATGPT_WEB_HOME:-$HOME/.codex-chatgpt-web}"
 DESCRIPTOR="$CORE_HOME/runtime/launcher-browser.json"
