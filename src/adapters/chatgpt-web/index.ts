@@ -315,7 +315,7 @@ function submittedTurnFailure(session: ChatGptTurnSession, error: unknown): Erro
     if (!normalized.retryable) return normalized;
     // Sending may already have executed tools. A transient upstream error does not undo them.
     return new ChatGptWebAdapterError(
-      "ChatGPT reported an error after submission may have started. Inspect the existing task and tool results before continuing.",
+      `ChatGPT reported an error after submission may have started (${normalized.code}). Original error: ${normalized.message} Inspect existing task handles and tool results before continuing; do not replay completed work.`,
       { status: normalized.status, errorType: normalized.errorType, code: normalized.code,
         retryable: false, cause: normalized },
     );

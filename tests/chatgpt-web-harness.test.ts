@@ -1208,6 +1208,11 @@ describe("ChatGPT outer-native harness v4", () => {
           await adapter.runTurn!(request, { headers: new Headers() }, event => events.push(event));
           expect(events.at(-1)).toMatchObject({ type: "error", code,
             retryable: phase === "prepared" });
+          expect((events.at(-1) as {message:string}).message).toContain("ChatGPT displayed a transient error");
+          if (phase !== "prepared") {
+            expect((events.at(-1) as {message:string}).message).toContain(code);
+            expect((events.at(-1) as {message:string}).message).toContain("do not replay completed work");
+          }
         }
         // A submitted transient error is replayed once only when no tool or response activity
         // occurred; the second failure is surfaced without another replay.

@@ -783,13 +783,13 @@ const chatGptTerminalErrorAlert = (scope: ChatGptTextScope): Locator => scope
 export async function throwIfChatGptTerminalErrorAlert(scope: ChatGptTextScope): Promise<void> {
   if (await chatGptTerminalUiVisible(scope.getByTestId("regenerate-thread-error-button"))) {
     throw new ChatGptWebAdapterError(
-      "ChatGPT displayed an error for this response. Check the ChatGPT tab for the exact error, then retry the turn.",
+      "ChatGPT displayed an error retry control for this response; the underlying reason was not captured.",
       { status: 502, errorType: "server_error", code: "upstream_server_error", retryable: true },
     );
   }
   if (!await chatGptTerminalUiVisible(chatGptTerminalErrorAlert(scope))) return;
   throw new ChatGptWebAdapterError(
-    "ChatGPT ended the turn with 'Something went wrong'. Retry the turn.",
+    "ChatGPT ended the turn with 'Something went wrong'.",
     { status: 502, errorType: "server_error", code: "upstream_server_error", retryable: true },
   );
 }
