@@ -2548,7 +2548,9 @@ class BrowserHost {
       }
       const contents = this.view.webContents;
       await contents.session.clearStorageData();
-      await contents.session.clearCache().catch(() => {});
+      if (typeof contents.session.clearCache === "function") {
+        await contents.session.clearCache().catch(() => {});
+      }
       contents.session.flushStorageData();
       await contents.session.cookies.flushStore();
       this.setState({
