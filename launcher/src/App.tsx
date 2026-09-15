@@ -286,6 +286,7 @@ function Onboarding({
               />
             </div>
           )}
+          <NetworkProxyPanel copy={localized} snapshot={snapshot} updateState={updateState} setError={setError} />
         </motion.section>
       </AnimatePresence>
 
@@ -310,7 +311,7 @@ function Onboarding({
           ))}
         </div>
         <PrimaryButton
-          disabled={busy || (stage === "support" && (!snapshot.state.githubOpened || !snapshot.state.xOpened))}
+          disabled={busy}
           onClick={isLanguage
             ? chooseLanguage
             : isInteraction ? () => setStage("support") : finish}

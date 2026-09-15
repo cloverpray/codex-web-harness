@@ -35,3 +35,20 @@ test("runtime stall counting excludes compaction, explicit tasks and ordinary an
  guard.observe(undefined,undefined,r,"Codex Native tools are unavailable",false);
  expect(guard.shouldStop(undefined,r)).toBeFalse();
 });
+
+
+test("unverified safety-status claims without tool calls stop the observed Goal loop", async () => {
+ const {GoalToolStallGuard}=await import("../src/adapters/chatgpt-web/goal-stall");
+ for (const value of [
+   "原生工具调用被 OpenAI 安全检查拦截。未返回具体拒绝原因或请求编号。",
+   "Codex_Native2.codex_exec: This tool call was blocked by OpenAI because we couldn't determine the safety status of the request.",
+ ]) {
+  const guard=new GoalToolStallGuard(); const r=request();
+  for(let i=0;i<3;i++) {
+   guard.observe("a",String(i),r,value,false);
+   expect(guard.shouldStop("a",r)).toBe(i===2);
+  }
+  guard.observe("a","actual-tool",r,value,true);
+  expect(guard.shouldStop("a",r)).toBeFalse();
+ }
+});

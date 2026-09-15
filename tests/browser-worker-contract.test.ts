@@ -126,9 +126,9 @@ test("assistant tracking rebinds only one proven replacement after React detache
   )).toThrow("2 new conversation turns");
 });
 
-test("a retained MCP conversation still requires a current-message connector", () => {
+test("retained MCP conversations use the composer app menu for current-message attachment", () => {
   expect(chatGptConnectorAttachmentMode(true, false)).toBe("mention");
-  expect(chatGptConnectorAttachmentMode(true, true)).toBe("mention");
+  expect(chatGptConnectorAttachmentMode(true, true)).toBe("composer-menu");
   expect(chatGptConnectorAttachmentMode(false, false)).toBe("none");
 });
 
@@ -2067,7 +2067,7 @@ test("an abort while inserting a connector prompt clears the selected pill and p
   expect(connectorSelected).toBeFalse();
 });
 
-test("retained tool turns reattach the connector to the current message", async () => {
+test("retained tool turns select the current connector from the composer app menu", async () => {
   const attachPrompt = (ChatGptBrowserWorker.prototype as unknown as {
     attachPrompt(
       page: unknown,
@@ -2089,7 +2089,8 @@ test("retained tool turns reattach the connector to the current message", async 
   };
   await attachPrompt.call({
     activeComposer: async () => composer,
-    selectConnector: async () => { calls.push("select"); return composer; },
+    selectConnector: async () => { throw new Error("mention must not run when composer app menu succeeds"); },
+    selectConnectorFromComposerMenu: async () => { calls.push("select"); return composer; },
     insertPromptText: async (_page: unknown, text: string) => { expect(text).toBe(" retained context"); calls.push("insert"); },
     assertPromptAttached: async () => { calls.push("assert"); },
   }, {}, "retained context", true, undefined, undefined, false, undefined, true);
@@ -2283,6 +2284,7 @@ test("Think attachment runs after fresh connector selection and rechecks retaine
     const submitted: boolean[] = [];
     const worker = {
       activeComposer: async () => ui.composer,
+      selectConnectorFromComposerMenu: async () => { connectorSelections += 1; ui.state.connectors = ["Codex Native2"]; return ui.composer; },
       selectConnector: async () => { connectorSelections += 1; ui.state.connectors = ["Codex Native2"]; return ui.composer; },
       insertPromptText: async () => { submitted.push(ui.state.pressed); },
       assertPromptAttached: async () => {}, clearChatGptComposerState: async () => { ui.state.draft = ""; ui.state.connectors = []; },

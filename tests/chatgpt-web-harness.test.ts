@@ -283,6 +283,201 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+describe("retained connector failure retries through the real adapter", () => {
+  let fixtureOrdinal = 0;
+  const researchRule = "RESEARCH_RULE: original RUN remains read-only; write only the independent acceptance directory.";
+  const researchHistory = "RESEARCH_HISTORY: candidate A failed transaction-cost validation; preserve the original 42 observations.";
+  const researchObjective = "RESEARCH_OBJECTIVE: continue the bounded validation without repeating candidate A.";
+
+  function researchRequest(turnId = "turn_fallback_2"): CodexParsedRequest {
+    const request = rawWireRequest(environmentXml);
+    request.context.systemPrompt = [researchRule];
+    request.context.messages = [
+      { role: "user", content: "Inspect the project", timestamp: 2 },
+      { role: "assistant", content: [{ type: "text", text: researchHistory }], timestamp: 3 },
+      { role: "user", content: researchObjective, timestamp: 4 },
+    ];
+    const raw = request._rawBody as { input: unknown[]; client_metadata: Record<string, string> };
+    raw.client_metadata["x-codex-turn-metadata"] = JSON.stringify({ thread_id: "thread_test_123", turn_id: turnId });
+    raw.input.push(
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: researchHistory }] },
+      {
+        type: "message", role: "user", content: [{ type: "input_text", text: researchObjective }],
+        internal_chat_message_metadata_passthrough: { turn_id: turnId },
+      },
+    );
+    return request;
+  }
+
+  function missingConnector(): ChatGptWebAdapterError {
+    return new ChatGptWebAdapterError("Configured app absent from this composer", {
+      status: 400, errorType: "connector_error", code: "connector_not_found", retryable: false,
+    });
+  }
+
+  async function fixture(
+    browser: (turn: BrowserTurn, attempt: number) => Promise<string>,
+    check: (adapter: ReturnType<typeof createChatGptWebAdapter>, turns: BrowserTurn[]) => Promise<void>,
+  ): Promise<void> {
+    const id = `retained-fallback-${process.pid}-${Date.now()}-${++fixtureOrdinal}`;
+    const socketPath = brokerTestEndpoint(id);
+    const provider: CodexProviderConfig = {
+      adapter: "chatgpt-web", baseUrl: `browser://${id}`,
+      chatgptWeb: {
+        browserHost: "launcher", browserHostDescriptorPath: join(tempRoot, `${id}.json`),
+        brokerSocketPath: socketPath, ...toolCapabilities,
+      },
+    };
+    const worker = ChatGptBrowserWorker.forProvider(provider);
+    const originalRun = worker.run.bind(worker);
+    const turns: BrowserTurn[] = [];
+    // Preserve the real adapter, prompt compiler, session state, broker and retry policy.
+    // Replace only browser execution; none of these tests submit a web message or execute a tool.
+    (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = async turn => {
+      turns.push(turn);
+      return browser(turn, turns.length);
+    };
+    try {
+      await check(createChatGptWebAdapter(provider), turns);
+    } finally {
+      (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = originalRun;
+      chatGptTurnSessions.clear();
+      await TurnBroker.forSocket(socketPath).close();
+    }
+  }
+
+  test("prepared retained failure rebuilds full unchanged research context and disables later retention", async () => {
+    const prompts: string[] = [];
+    await fixture(async (turn, attempt) => {
+      if (attempt === 1) {
+        expect(turn.retainConversation).toBe(true);
+        expect(turn.conversationKey).toBeString();
+        expect(turn.prepareResume).toBeFunction();
+        const prepared = await turn.prepareResume!();
+        prompts.push(prepared.text);
+        prepared.release();
+        throw missingConnector();
+      }
+      expect(turn.prepareResume).toBeUndefined();
+      expect(turn.conversationKey).toBeUndefined();
+      expect(turn.retainConversation).toBeUndefined();
+      const prepared = await turn.prepare();
+      prompts.push(prepared.text);
+      prepared.release();
+      await turn.onSendActivated?.();
+      turn.onSubmitted?.();
+      turn.onTextDelta("Fresh full-context answer");
+      return "Fresh full-context answer";
+    }, async (adapter, turns) => {
+      const request = researchRequest();
+      const contextBefore = structuredClone(request.context);
+      const rawBefore = structuredClone(request._rawBody);
+      const events: AdapterEvent[] = [];
+      await adapter.runTurn!(request, { headers: new Headers() }, event => events.push(event));
+      expect(turns).toHaveLength(2);
+      expect(events.some(event => event.type === "error")).toBe(false);
+      expect(prompts[0]).toContain(researchObjective);
+      expect(prompts[0]).not.toContain(researchHistory);
+      for (const text of [researchRule, researchHistory, researchObjective, "Inspect the project"]) {
+        expect(prompts[1]).toContain(text);
+      }
+      const fullContext = JSON.parse(prompts[1]!.match(/<codex_context_json>\n([\s\S]*?)\n<\/codex_context_json>/)![1]!);
+      expect(fullContext.system).toEqual(contextBefore.systemPrompt);
+      expect(fullContext.messages).toEqual(contextBefore.messages.map(({ role, content }) => ({ role, content })));
+      expect(request.context).toEqual(contextBefore);
+      expect(request._rawBody).toEqual(rawBefore);
+      // A new native turn under the same provider must not probe the known-broken retained route again.
+      const laterEvents: AdapterEvent[] = [];
+      await adapter.runTurn!(researchRequest("turn_fallback_3"), { headers: new Headers() }, event => laterEvents.push(event));
+      expect(turns).toHaveLength(3);
+      expect(laterEvents.some(event => event.type === "error")).toBe(false);
+      expect(prompts[2]).toContain(researchHistory);
+    });
+  });
+
+  test("a second connector failure on the fresh retry stops after two browser attempts", async () => {
+    await fixture(async (turn, attempt) => {
+      const prepared = attempt === 1 ? await turn.prepareResume!() : await turn.prepare();
+      prepared.release();
+      if (attempt > 1) expect(turn.prepareResume).toBeUndefined();
+      throw missingConnector();
+    }, async (adapter, turns) => {
+      const events: AdapterEvent[] = [];
+      await adapter.runTurn!(researchRequest(), { headers: new Headers() }, event => events.push(event));
+      expect(turns).toHaveLength(2);
+      expect(events.at(-1)).toMatchObject({ type: "error", code: "connector_not_found", retryable: false });
+    });
+  });
+
+  test("a connector failure on an initially fresh page does not trigger recovery", async () => {
+    await fixture(async turn => {
+      const prepared = await turn.prepare();
+      prepared.release();
+      throw missingConnector();
+    }, async (adapter, turns) => {
+      const events: AdapterEvent[] = [];
+      await adapter.runTurn!(researchRequest(), { headers: new Headers() }, event => events.push(event));
+      expect(turns).toHaveLength(1);
+      expect(events.at(-1)).toMatchObject({ type: "error", code: "connector_not_found" });
+    });
+  });
+
+  for (const phase of ["send_activated", "submitted"] as const) {
+    test(`retained connector errors after ${phase} never replay a possibly submitted task`, async () => {
+      await fixture(async turn => {
+        const prepared = await turn.prepareResume!();
+        prepared.release();
+        await turn.onSendActivated?.();
+        if (phase === "submitted") turn.onSubmitted?.();
+        throw missingConnector();
+      }, async (adapter, turns) => {
+        const events: AdapterEvent[] = [];
+        await adapter.runTurn!(researchRequest(), { headers: new Headers() }, event => events.push(event));
+        expect(turns).toHaveLength(1);
+        expect(events.at(-1)).toMatchObject({ type: "error" });
+      });
+    });
+  }
+
+  for (const activity of ["text", "trace", "tool"] as const) {
+    test(`retained connector errors with existing ${activity} activity cannot retry`, async () => {
+      await fixture(async turn => {
+        const prepared = await turn.prepareResume!();
+        prepared.release();
+        if (activity === "text") turn.onTextDelta("Visible response already emitted");
+        if (activity === "trace") turn.onCommentary?.("Browser work already began");
+        if (activity === "tool") {
+          const progress = turn.externalProgress as ChatGptExternalTurnProgress;
+          progress.recordToolBatch(1);
+          progress.recordToolResult();
+        }
+        throw missingConnector();
+      }, async (adapter, turns) => {
+        const events: AdapterEvent[] = [];
+        await adapter.runTurn!(researchRequest(), { headers: new Headers() }, event => events.push(event));
+        expect(turns).toHaveLength(1);
+        expect(events.at(-1)).toMatchObject({ type: "error", code: "connector_not_found" });
+      });
+    });
+  }
+
+  test("a genuine browser refusal is not reclassified as connector recovery", async () => {
+    await fixture(async turn => {
+      const prepared = await turn.prepareResume!();
+      prepared.release();
+      await turn.onSendActivated?.();
+      throw new ChatGptWebAdapterError("The browser refused this request", {
+        status: 400, errorType: "invalid_request_error", code: "chatgpt_refusal", retryable: false,
+      });
+    }, async (adapter, turns) => {
+      const events: AdapterEvent[] = [];
+      await adapter.runTurn!(researchRequest(), { headers: new Headers() }, event => events.push(event));
+      expect(turns).toHaveLength(1);
+      expect(events.at(-1)).toMatchObject({ type: "error", code: "chatgpt_refusal", retryable: false });
+    });
+  });
+});
+
 describe("ChatGPT outer-native harness v4", () => {
   test("extracts authoritative environment, tool registry, and turn identity from the Codex wire envelope", () => {
     const request = rawWireRequest(environmentXml);

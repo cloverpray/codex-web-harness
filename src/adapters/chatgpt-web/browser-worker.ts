@@ -1293,15 +1293,15 @@ export function chatGptSubmissionEvidence(state: {
   return undefined;
 }
 
-export type ChatGptConnectorAttachmentMode = "none" | "mention" | "retained";
+export type ChatGptConnectorAttachmentMode = "none" | "mention" | "composer-menu";
 
-/** A retained conversation is not proof of tool attachment on the next user message. */
+/** Both routes select and verify the connector on the current message. */
 export function chatGptConnectorAttachmentMode(
   localTools: boolean,
-  _reuseConversation: boolean,
+  reusedConnectorConversation: boolean,
 ): ChatGptConnectorAttachmentMode {
   if (!localTools) return "none";
-  return "mention";
+  return reusedConnectorConversation ? "composer-menu" : "mention";
 }
 
 export async function setChatGptThinkMode(
@@ -3124,6 +3124,66 @@ export class ChatGptBrowserWorker {
     });
   }
 
+  private async selectConnectorFromComposerMenu(
+    page: Page,
+    captureDiagnostic?: (checkpoint: string) => Promise<void>,
+    abortSignal?: AbortSignal,
+  ): Promise<Locator | undefined> {
+    throwIfPromptAttachmentAborted(abortSignal);
+    const plus = page.getByTestId("composer-plus-btn").filter({ visible: true });
+    if (await plus.count() !== 1) return undefined;
+    let opened = false;
+    try {
+      opened = true;
+      await plus.click({ timeout: CHATGPT_CONNECTOR_ACTION_TIMEOUT_MS, signal: abortSignal });
+      // Clicking can merely dismiss an outgoing effort menu. Require the plus control's own
+      // expansion acknowledgement before interpreting a missing app as catalog unavailability.
+      const expandedPlus = page.locator('[data-testid="composer-plus-btn"][aria-expanded="true"]');
+      try {
+        await expandedPlus.waitFor({ state: "visible", timeout: 1_500, signal: abortSignal });
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+        await captureDiagnostic?.("composer-connector-open-unconfirmed");
+        await plus.click({ timeout: CHATGPT_CONNECTOR_ACTION_TIMEOUT_MS, signal: abortSignal });
+        await expandedPlus.waitFor({ state: "visible", timeout: 2_500, signal: abortSignal });
+      }
+      await captureDiagnostic?.("composer-connector-open-confirmed");
+      // Scope to real composer app entries: sidebar links, filenames, and prose are not apps.
+      const rows = page.locator('[data-composer-plugin-impression-id] .__menu-item[tabindex="0"]')
+        .filter({ visible: true }).filter({ has: page.getByText(this.config.appName, { exact: true }) });
+      try {
+        await rows.waitFor({ state: "visible", timeout: 5_000, signal: abortSignal });
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+        console.info(`[chatgpt-web] composer_connector_lookup ${JSON.stringify({
+          expanded: await plus.getAttribute("aria-expanded"),
+          appRows: await page.locator("[data-composer-plugin-impression-id]").filter({ visible: true }).count(),
+          exactRows: await rows.count(),
+        })}`);
+        await captureDiagnostic?.("composer-connector-menu-unavailable");
+        await withBrowserTurnAbort(withChatGptBrowserObservationTimeout(page.keyboard.press("Escape")), abortSignal);
+        opened = false;
+        return undefined;
+      }
+      await captureDiagnostic?.("composer-connector-menu-visible");
+      await rows.click({ timeout: CHATGPT_CONNECTOR_ACTION_TIMEOUT_MS, signal: abortSignal });
+      const composer = await this.activeComposer(page, CHATGPT_CONNECTOR_ACTION_TIMEOUT_MS, abortSignal);
+      if (!await this.connectorIsSelected(composer, abortSignal)) {
+        throw new Error(`ChatGPT composer menu did not select ${JSON.stringify(this.config.appName)} connector`);
+      }
+      await captureDiagnostic?.("composer-connector-selected");
+      return composer;
+    } catch (error) {
+      if (opened) {
+        try { await this.clearChatGptComposerState(page); }
+        catch (cleanupError) {
+          throw new ChatGptPersistentBrowserStateError([error, cleanupError], "ChatGPT composer connector menu could not be cleared");
+        }
+      }
+      throw error;
+    }
+  }
+
   private async selectConnector(
     page: Page,
     captureDiagnostic?: (checkpoint: string) => Promise<void>,
@@ -3350,7 +3410,7 @@ export class ChatGptBrowserWorker {
     const connectorMode = chatGptConnectorAttachmentMode(localTools, reuseConnector);
     let composerMutationStarted = false;
     try {
-      if (connectorMode !== "mention") {
+      if (connectorMode === "none") {
         const composer = await this.activeComposer(page, 30_000, abortSignal);
         // Playwright's multiline fill maps through an input action that ChatGPT's Lexical editor can
         // collapse to the first paragraph on the launcher-owned Electron surface. Clear separately,
@@ -3365,7 +3425,9 @@ export class ChatGptBrowserWorker {
         await this.assertPromptAttached(page, prompt, abortSignal);
         return;
       }
-      const selectedComposer = await this.selectConnector(
+      const menuComposer = connectorMode === "composer-menu"
+        ? await this.selectConnectorFromComposerMenu(page, captureDiagnostic, abortSignal) : undefined;
+      const selectedComposer = menuComposer ?? await this.selectConnector(
         page,
         captureDiagnostic,
         catalogRefreshAvailable,
@@ -4334,6 +4396,7 @@ export class ChatGptBrowserWorker {
     });
     const surfaceId = lease.surfaceId;
     const reused = lease.reused === true;
+    let connectorBound = false;
     let terminal: "completed" | "failed" | "aborted" = "completed";
     let terminalMessage: string | undefined;
     let originalError: unknown;
@@ -4369,7 +4432,8 @@ export class ChatGptBrowserWorker {
       await turn.onPreparedSelected?.(reused);
       heartbeatTimer = setInterval(sendHeartbeat, LAUNCHER_TURN_HEARTBEAT_INTERVAL_MS);
       heartbeatTimer.unref?.();
-      return await this.runBrowserTurn(turn, surfaceId, undefined, reused);
+      return await this.runBrowserTurn(turn, surfaceId, undefined, reused,
+        reused && lease.connectorBound === true, () => { connectorBound = true; });
     } catch (error) {
       originalError = error;
       terminal = error instanceof ChatGptCompactionHandoffAccepted
@@ -4390,7 +4454,7 @@ export class ChatGptBrowserWorker {
           status: terminal,
           ...(terminalMessage ? { message: terminalMessage } : {}),
           ...(terminal === "completed" && turn.retainConversation ? { retain: true } : {}),
-          ...(terminal === "completed" && (turn.nativeConnector || turn.capabilities.localToolsEnabled)
+          ...(terminal === "completed" && connectorBound
             ? { connectorBound: true }
             : {}),
         });
@@ -4412,6 +4476,8 @@ export class ChatGptBrowserWorker {
     launcherSurfaceId?: string,
     maintenancePage?: Page,
     reuseConversation = false,
+    trustedLeaseConnectorBound = false,
+    onConnectorBound?: () => void,
   ): Promise<string> {
     if (turn.abortSignal?.aborted) throw new DOMException("ChatGPT web turn aborted", "AbortError");
     if ((turn.externalProgress !== undefined) !== (turn.completionFence !== undefined)) {
@@ -4677,8 +4743,8 @@ export class ChatGptBrowserWorker {
           ),
         );
       }
-      // A retained lease preserves history; both tool attachment and model selection are per-message.
-      // Reconcile the live control before every submission, including retained continuations.
+      // Model selection and connector attachment are both verified per message.
+      // Reconcile the live model before every submission, including retained continuations.
       let mode = await this.runStage(turn.traceId, "effort_selection", browserStageTimeouts.effortSelection, () => (
         this.selectModelAndEffort(
           page,
@@ -4794,6 +4860,7 @@ export class ChatGptBrowserWorker {
         finalPrompt = multipartFinalPrompt;
       }
 
+      const reuseConnector = reuseConversation && trustedLeaseConnectorBound;
       let submissionBaseline = await this.captureSubmissionBaseline(page);
       let catalogRefreshAvailable = mode.localTools && !reuseConversation && !prepared.multipart;
       const connectorAttemptBudget: ChatGptConnectorAttemptBudget = { triggerAttempts: 0 };
@@ -4817,13 +4884,14 @@ export class ChatGptBrowserWorker {
                 promptAbortSignal,
                 catalogRefreshAvailable,
                 connectorAttemptBudget,
-                reuseConversation,
+                reuseConnector,
                 mode.thinkEnabled,
               );
             },
             chatGptSuspensionClock,
             true,
           );
+          if (mode.localTools) onConnectorBound?.();
           break;
         } catch (error) {
           if (!(error instanceof ChatGptConnectorCatalogStaleError) || !catalogRefreshAvailable) throw error;

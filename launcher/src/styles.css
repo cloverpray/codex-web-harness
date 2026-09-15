@@ -2211,7 +2211,8 @@ code {
   flex: 1;
   flex-direction: column;
   align-self: center;
-  justify-content: center;
+  justify-content: safe center;
+  overflow-y: auto;
   padding: 24px 0 48px;
 }
 

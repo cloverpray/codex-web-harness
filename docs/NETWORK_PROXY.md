@@ -1,12 +1,12 @@
 # Optional network proxy / 可选网络代理
 
-Open **Setup** or **Settings → Network proxy**. Choose existing settings (default), direct connection, or a custom HTTP/HTTPS proxy. For a local proxy app, use its HTTP or Mixed endpoint, such as `http://127.0.0.1:7890`; the port is an example, not an automatically detected value. SOCKS-only endpoints and embedded usernames/passwords are not supported.
+Open **Network proxy** on the first welcome screen, **Setup**, or **Settings**. You can save it offline without signing in; opening GitHub or X is optional. Choose existing settings (default), direct connection, or a custom HTTP/HTTPS proxy. For a local proxy app, use its HTTP or Mixed endpoint, such as `http://127.0.0.1:7890`; the port is an example, not an automatically detected value. SOCKS-only endpoints and embedded usernames/passwords are not supported.
 
 Save, then fully quit the Launcher from its tray menu and reopen it. Saving does not interrupt running tasks. Chromium sessions and desktop update downloads use the selected browser proxy. New Bun runtime and Tunnel child processes receive HTTP_PROXY/HTTPS_PROXY, with loopback excluded through NO_PROXY. Existing system settings are retained in the default mode; system browser settings alone are not automatically converted into subprocess environment settings. External browsers and separately started native Codex processes are not reconfigured. The proxy service must already be running; this application does not provide one or alter account eligibility, authentication or usage limits.
 
 Local Chromium-session and Bun-fetch smoke checks each verified one request through a local test proxy and a separate loopback request sent directly. Windows end-to-end validation and a live Tunnel connection through the user's proxy remain to be verified on the target machine.
 
-在「设置 Codex」或「设置 → 网络代理」中选择模式。自定义模式填写代理软件的 HTTP/Mixed 端口，保存后从托盘彻底退出并重新打开本软件。无需修改系统代理，也不会在保存时中断研究。暂不支持仅 SOCKS 的端口或带账号密码的代理地址。
+首次欢迎页、「设置 Codex」或「设置 → 网络代理」均可配置。离线、未登录时也能保存；不必打开 GitHub 或 X 就能进入软件。自定义模式填写代理软件的 HTTP/Mixed 端口，保存后从托盘彻底退出并重新打开本软件。无需修改系统代理，也不会在保存时中断研究。暂不支持仅 SOCKS 的端口或带账号密码的代理地址。
 
 ## Setup flow change / 安装流程调整
 

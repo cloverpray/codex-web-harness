@@ -341,6 +341,9 @@ function submittedTurnFailure(session: ChatGptTurnSession, error: unknown): Erro
   );
 }
 
+// Runtime-scoped compatibility evidence: do not repeatedly probe a broken retained app surface.
+const unavailableRetainedConnectorNamespaces = new Set<string>();
+
 class ChatGptSafeAutoRetry extends Error {
   readonly code = "chatgpt_safe_auto_retry";
 }
@@ -424,7 +427,7 @@ export function createChatGptWebAdapter(
     environment: ReturnType<typeof extractChatGptTurnEnvironment> | undefined,
     traceId: string,
     turnCapabilities: ChatGptWebCapabilities,
-    hooks: { onCompactionProgress?: () => void } = {},
+    hooks: { onCompactionProgress?: () => void; forceFreshConversation?: boolean } = {},
   ): ChatGptTurnRuntime => {
     const manualRequest = isChatGptWebZeroRiskBackendModel(parsed.modelId);
     if (manualRequest !== manualInteraction) {
@@ -445,6 +448,8 @@ export function createChatGptWebAdapter(
       ? lunaCheckpointStore.apply(parsed)
       : { parsed, applied: false };
     const conversationKey = !parsed._compactionRequest
+      && !hooks.forceFreshConversation
+      && !unavailableRetainedConnectorNamespaces.has(executionNamespace)
       && parsed.modelId !== CHATGPT_WEB_LUNA_MODEL_ID
       && mode.localTools
       && retainedLauncherDescriptor
@@ -766,6 +771,7 @@ export function createChatGptWebAdapter(
           { ...compileOptionsFor(input), retainedContext: input === resumeInput },
         );
         const reused = input === resumeInput;
+        submission.retained = reused;
         const omittedSystemBytes = reused
           ? Buffer.byteLength(JSON.stringify(checkpointInput.parsed.context.systemPrompt ?? []), "utf8") - 2
           : 0;
@@ -1211,7 +1217,7 @@ export function createChatGptWebAdapter(
         const session = await chatGptTurnSessions.getOrCreateAfterOwnerRetirement(
           executionKey,
           ownerKey,
-          () => startRuntime(parsed, environment, traceId, turnCapabilities),
+          () => startRuntime(parsed, environment, traceId, turnCapabilities, { forceFreshConversation: safeRetryUsed }),
           traceId,
           incoming.abortSignal,
           nativeTurnId,
@@ -1475,10 +1481,15 @@ export function createChatGptWebAdapter(
           const progress = session.runtime.mode === "tools"
             ? session.runtime.externalProgress.snapshot()
             : undefined;
-          const safeToRetry = !manualRequest
-            && turnError instanceof ChatGptWebAdapterError
+          const lostRetainedConnector = turnError instanceof ChatGptWebAdapterError
+            && turnError.code === "connector_not_found"
+            && session.runtime.submission?.retained === true
+            && session.runtime.submission.phase === "prepared";
+          const retryableEmptyUpstream = turnError instanceof ChatGptWebAdapterError
             && (turnError.code === "upstream_server_error" || turnError.code === "rate_limit_exceeded")
-            && session.runtime.submission?.phase === "accepted"
+            && session.runtime.submission?.phase === "accepted";
+          const safeToRetry = !manualRequest
+            && (lostRetainedConnector || retryableEmptyUpstream)
             && session.outstanding().length === 0
             && session.runtime.text.value().length === 0
             && !session.runtime.trace.hasActivity()
@@ -1486,7 +1497,13 @@ export function createChatGptWebAdapter(
             && !safeRetryUsed;
           if (safeToRetry) {
             safeRetryUsed = true;
-            console.warn(`[chatgpt-web] safe automatic retry after upstream error; no tool or response activity trace=${session.traceId ?? "unknown"}`);
+            if (lostRetainedConnector) {
+              unavailableRetainedConnectorNamespaces.add(executionNamespace);
+              if (unavailableRetainedConnectorNamespaces.size > 64) {
+                unavailableRetainedConnectorNamespaces.delete(unavailableRetainedConnectorNamespaces.values().next().value!);
+              }
+            }
+            console.warn(`[chatgpt-web] safe automatic retry reason=${lostRetainedConnector ? "retained_connector_unavailable_before_send" : "empty_upstream_error"}; no tool or response activity trace=${session.traceId ?? "unknown"}`);
             chatGptTurnSessions.retire(executionKey, session);
             throw new ChatGptSafeAutoRetry();
           }

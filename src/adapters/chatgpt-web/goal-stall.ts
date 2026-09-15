@@ -10,8 +10,8 @@ function continuation(message: CodexMessage): boolean {
     && text(message).trimEnd().endsWith("</codex_internal_context>");
 }
 function unavailable(value: string): boolean {
-  return /(?:Codex[ _-]*Native|执行接口|本地工具|local tools?|execution interface)/i.test(value)
-    && /(?:不可用|没有可用|未提供可用|无法调用|无法访问|无法读取|无法执行|无法继续|unavailable|no .*?(?:interface|tools?)|cannot (?:access|call|execute))/i.test(value);
+  return /(?:Codex[ _-]*Native|执行接口|本地工具|原生工具|local tools?|execution interface)/i.test(value)
+    && /(?:不可用|没有可用|未提供可用|无法调用|无法访问|无法读取|无法执行|无法继续|(?:安全检查|安全审查)(?:拦截|拒绝)|couldn['’]t determine the safety status of the request|unavailable|no .*?(?:interface|tools?)|cannot (?:access|call|execute))/i.test(value);
 }
 
 /** Count only completed turns witnessed by this runtime, not stale replayed history. */

@@ -8,6 +8,16 @@ This is a derivative distribution, not a claim of original authorship of the lau
 
 本项目是衍生发行版，不将原启动器或桥接器声明为自己的原创。保留上游 MIT 许可证和第三方许可；源码来自上游已跟踪文件与明确选择的新实现和测试，不包含本机诊断、用户配置或私人研究历史。
 
+## 5.0.7-alpha.36 — offline onboarding and retained connector recovery
+
+- Proxy settings are available before onboarding completes; optional social links no longer block entry. Saved proxy settings still require a full restart. Offline desktop smoke checks real IPC persistence without marking login, installation or MCP as verified.
+- Verify current-message connector attachment, with a bounded composer-menu alternative on retained pages. An empty app menu can trigger one full-context fresh-page recovery only before Send and without tool/response activity; remember that compatibility issue during the runtime.
+- Stop repeated automatic Goal replies that claim unavailable tools without recorded calls. This does not authenticate or bypass upstream safety checks.
+- Includes intervening local cold-start/idle-document readiness repairs. Linux live acceptance completed three High Goal turns with native tools and started a read-only Pro consultation.
+- Limitations: fresh-page recovery uses more context; assistant-reported safety refusals without matching local records remain unconfirmed. Windows package checks are distinct from target-network end-to-end verification.
+
+首次启动即可离线保存代理，外链不再挡住进入软件。旧网页连接器丢失时，在确认未发送且无工具/回复活动后恢复一次完整上下文的新网页。保留真实联网验证与拒绝边界，不宣称已解决未知来源的安全拒绝。
+
 ## 5.0.7-alpha.1
 
 - Opt-in Codex profile routing and separate Web model metadata catalog.
