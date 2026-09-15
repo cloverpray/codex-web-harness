@@ -823,8 +823,9 @@ describe("trusted Codex task environment continuity", () => {
     });
   });
 
-  test.skipIf(process.platform !== "win32")("resumed Windows tasks accept the same indexed rollout with either path namespace", () => {
-    for (const namespaceHome of [false, true]) for (const namespaceRollout of [false, true]) {
+  // Each combination performs real SQLite/file IO; keep independent test budgets on Windows CI.
+  for (const namespaceHome of [false, true]) for (const namespaceRollout of [false, true]) {
+    test.skipIf(process.platform !== "win32")(`resumed Windows tasks accept indexed rollout (namespaced home=${namespaceHome}, rollout=${namespaceRollout})`, () => {
       const { codexHome, request, rolloutPath } = resumedRootFixture();
       const databasePath = join(codexHome, "state_5.sqlite");
       createRolloutState(databasePath, namespaceRollout ? toNamespacedPath(rolloutPath) : rolloutPath);
@@ -835,8 +836,8 @@ describe("trusted Codex task environment continuity", () => {
         undefined, Date.now, namespaceHome ? toNamespacedPath(codexHome) : codexHome,
       );
       expect(store.resolve(request).cwd).toBe(root);
-    }
-  });
+    });
+  }
 
   for (const format of ["v1", "v2"]) for (const groupedPreamble of [false, true]) test(`${format} ${groupedPreamble ? "grouped preamble" : "context-only"} continuation requires a matching current rollout, not just a checkpoint`, () => {
     const { codexHome, request, rolloutPath } = resumedRootFixture();

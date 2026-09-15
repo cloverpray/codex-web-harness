@@ -8,7 +8,7 @@ This is a derivative distribution, not a claim of original authorship of the lau
 
 本项目是衍生发行版，不将原启动器或桥接器声明为自己的原创。保留上游 MIT 许可证和第三方许可；源码来自上游已跟踪文件与明确选择的新实现和测试，不包含本机诊断、用户配置或私人研究历史。
 
-## 5.0.7-alpha.36 — offline onboarding and retained connector recovery
+## 5.0.7-alpha.37 — offline onboarding and retained connector recovery
 
 - Proxy settings are available before onboarding completes; optional social links no longer block entry. Saved proxy settings still require a full restart. Offline desktop smoke checks real IPC persistence without marking login, installation or MCP as verified.
 - Verify current-message connector attachment, with a bounded composer-menu alternative on retained pages. An empty app menu can trigger one full-context fresh-page recovery only before Send and without tool/response activity; remember that compatibility issue during the runtime.

@@ -16,13 +16,13 @@ You stay in the terminal. The model works through the Web. This unofficial launc
 
 Derived from [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web). See [provenance and changes](docs/CHANGES.md). This project is not affiliated with OpenAI.
 
-## New in alpha.36: offline setup and connector recovery
+## New in alpha.37: offline setup and connector recovery
 
 Configure the proxy from the first welcome screen, before signing in. GitHub and X links are optional. When a retained ChatGPT page loses its connector, a verified pre-send failure can recover once on a fresh page with full context. Running tasks and tool refusals are not replayed by this recovery.
 
 A real High Goal completed three consecutive turns with native tools on Linux. Fresh-page compatibility recovery costs more context than normal reuse; it does not resolve unconfirmed upstream safety refusals.
 
-[Download alpha.36](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.36) · [Network proxy / 代理配置](docs/NETWORK_PROXY.md)
+[Download alpha.37](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.37) · [Network proxy / 代理配置](docs/NETWORK_PROXY.md)
 
 ## New in alpha.14: keep the evidence, send less noise
 

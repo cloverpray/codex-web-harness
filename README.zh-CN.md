@@ -16,13 +16,13 @@ ChatGPT 已经订阅了，写项目时还在来回粘贴代码？这个项目把
 
 基于 [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web)，保留原许可证与贡献者归属。[来源与改动](docs/CHANGES.md)。本项目与 OpenAI 无隶属关系。
 
-## alpha.36：离线也能配置，连接器丢失可恢复
+## alpha.37：离线也能配置，连接器丢失可恢复
 
 首次欢迎页即可配置代理，无需先登录；GitHub 和 X 外链改为可选。旧 ChatGPT 网页丢失连接器时，确认尚未发送且没有工具活动后，允许一次携带完整上下文的新网页恢复。这条恢复路径不会重发已执行任务或工具拒绝。
 
 Linux 上已用真实 High Goal 验收连续三轮原生工具调用。新网页兼容恢复比正常复用更费上下文；尚未确认来源的上游安全拒绝不在本次修复结论内。
 
-[下载 alpha.36](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.36) · [Network proxy / 代理配置](docs/NETWORK_PROXY.md)
+[下载 alpha.37](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.37) · [Network proxy / 代理配置](docs/NETWORK_PROXY.md)
 
 ## alpha.14：长任务，把上下文留给下一步
 
