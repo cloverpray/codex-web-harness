@@ -16,6 +16,14 @@ You stay in the terminal. The model works through the Web. This unofficial launc
 
 Derived from [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web). See [provenance and changes](docs/CHANGES.md). This project is not affiliated with OpenAI.
 
+## New in alpha.29: optional proxy and a clearer setup flow
+
+Configure an HTTP/HTTPS proxy in Setup or Settings, then fully quit and reopen the Launcher. Browser sessions and update downloads use the selected proxy; runtime subprocesses receive proxy environment settings, while the local Bridge stays direct. Use your proxy app's HTTP/Mixed port.
+
+Installing into Codex no longer waits for passive model-list detection before letting you configure the Harness connection. The old “Restart Codex” action is now “Check model detection” and does not reinstall.
+
+[Download alpha.29](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.29) · [Proxy setup and limitations](docs/NETWORK_PROXY.md)
+
 ## New in alpha.14: keep the evidence, send less noise
 
 A long test log or repository search can fill the conversation before the next useful decision. **Alpha.14 gives the model a short preview and a file it can read in smaller pieces**, instead of carrying every large successful command result into each tool-capable history rebuild.

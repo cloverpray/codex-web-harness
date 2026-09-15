@@ -12,6 +12,6 @@ Local Chromium-session and Bun-fetch smoke checks each verified one request thro
 
 Installing models and observing Codex's model-list request are separate states. Once installation succeeds, MCP setup is accessible while model detection remains pending. “Check model detection” observes existing health evidence; it does not reinstall, reset installation state, launch Codex, or pretend that Codex restarted. An actual model-list request still controls the verified indicator. Runtime errors, missing credentials and active-operation locks remain effective.
 
-模型安装成功后即可进入 Harness 连接设置；无需等待被动模型检测。原来的“重启 Codex”操作改为“重新检测模型”，不会再次重装。模型检测状态继续如实显示。新版本发布前，已安装的 Windows 版本不会自动获得此改动。
+模型安装成功后即可进入 Harness 连接设置；无需等待被动模型检测。原来的“重启 Codex”操作改为“重新检测模型”，不会再次重装。模型检测状态继续如实显示。升级到 alpha.29 后可使用此流程。
 
 Implementation references: [Electron ProxyConfig](https://www.electronjs.org/docs/latest/api/structures/proxy-config), [Bun fetch proxy](https://bun.com/reference/globals/BunFetchRequestInit/proxy).

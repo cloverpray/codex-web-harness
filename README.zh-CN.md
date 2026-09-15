@@ -16,6 +16,14 @@ ChatGPT 已经订阅了，写项目时还在来回粘贴代码？这个项目把
 
 基于 [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web)，保留原许可证与贡献者归属。[来源与改动](docs/CHANGES.md)。本项目与 OpenAI 无隶属关系。
 
+## alpha.29：可选代理，安装后直接继续连接
+
+在安装页或设置页填写 HTTP/HTTPS 代理，保存后彻底退出并重新打开软件。浏览器和更新下载使用所选代理，后台运行时继承代理环境变量，本地 Bridge 保持直连。填写代理软件的 HTTP/Mixed 端口即可。
+
+“安装到 Codex”成功后即可继续配置 Harness，不再被被动模型检测卡住。原来的“重启 Codex”改为“重新检测模型”，不会反复重装。
+
+[下载 alpha.29](https://github.com/cloverpray/codex-web-harness/releases/tag/v5.0.7-alpha.29) · [代理配置与支持范围](docs/NETWORK_PROXY.md)
+
 ## alpha.14：长任务，把上下文留给下一步
 
 一份长测试日志、一次大范围仓库搜索，就可能塞进数万字符。任务还没推进多少，上下文已经快满了。**这次更新让模型先看短预览，需要细节时再按范围读取保存的结果**，减少大段成功输出在工具可用的历史重建中占用的空间。
