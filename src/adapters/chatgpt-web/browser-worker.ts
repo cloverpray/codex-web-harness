@@ -1275,13 +1275,13 @@ export function chatGptSubmissionEvidence(state: {
 
 export type ChatGptConnectorAttachmentMode = "none" | "mention" | "retained";
 
-/** A launcher lease may reuse a connector only after proving that exact retained surface is bound. */
+/** A retained conversation is not proof of tool attachment on the next user message. */
 export function chatGptConnectorAttachmentMode(
   localTools: boolean,
-  reuseConversation: boolean,
+  _reuseConversation: boolean,
 ): ChatGptConnectorAttachmentMode {
   if (!localTools) return "none";
-  return reuseConversation ? "retained" : "mention";
+  return "mention";
 }
 
 export async function setChatGptThinkMode(
@@ -3365,6 +3365,7 @@ export class ChatGptBrowserWorker {
       });
       await this.insertPromptText(page, ` ${prompt}`, abortSignal);
       await this.assertPromptAttached(page, prompt, abortSignal);
+      await captureDiagnostic?.("current-message-connector-attached");
     } catch (error) {
       if (!composerMutationStarted || error instanceof ChatGptPersistentBrowserStateError) throw error;
       try {
@@ -4656,7 +4657,7 @@ export class ChatGptBrowserWorker {
           ),
         );
       }
-      // A retained lease proves the connector binding, not the current model selection.
+      // A retained lease preserves history; both tool attachment and model selection are per-message.
       // Reconcile the live control before every submission, including retained continuations.
       let mode = await this.runStage(turn.traceId, "effort_selection", browserStageTimeouts.effortSelection, () => (
         this.selectModelAndEffort(

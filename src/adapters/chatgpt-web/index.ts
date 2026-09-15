@@ -1,3 +1,4 @@
+import { repeatedUnverifiedToolUnavailability } from "./goal-stall";
 import { compiledChatGptWebMessages } from "./input-tokens";
 import { compactCommandOutput } from "./output-artifacts";
 import { createHash, randomBytes } from "node:crypto";
@@ -883,6 +884,18 @@ export function createChatGptWebAdapter(
         const mode = manualRequest
           ? { localTools: true }
           : resolveChatGptWebModelMode(parsed.modelId, parsed.options.reasoning, turnCapabilities);
+        if (!manualRequest && mode.localTools && repeatedUnverifiedToolUnavailability(parsed)) {
+          console.warn(`[chatgpt-web] goal_stall ${JSON.stringify({
+            ...extractChatGptTurnIdentity(parsed), reason: "three_tool_unavailable_answers_without_calls",
+            policyVerdict: "unknown", action: "stop_before_submission",
+          })}`);
+          emit({ type: "error", status: 409, errorType: "invalid_request_error",
+            code: "chatgpt_goal_no_tool_progress", retryable: false,
+            message: "Goal continuation stopped: three consecutive replies reported unavailable local tools without any recorded tool call. "
+              + "This is not a verified safety rejection. Check the connector and existing task results before explicitly resuming; no task was resubmitted.",
+          });
+          return;
+        }
         const structuredOutputValidator = parsed._compactionRequest
           ? undefined
           : createChatGptStructuredOutputValidator(parsed.options.outputFormat);

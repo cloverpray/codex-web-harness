@@ -1,0 +1,11 @@
+# Tool attachment and stalled Goal continuations
+
+A retained ChatGPT conversation preserves history. It does not prove that a new user message has the Codex Native connector attached. Earlier builds treated a Launcher lease's historical `connectorBound` flag as sufficient and skipped connector selection on retained turns. A plain final answer then completed successfully even when it only repeated that local tools were unavailable. Native Goal continuation could submit the same task again immediately.
+
+Tool-capable submissions now select and verify the connector for every message, including retained turns. Conversation history is still reused. The transport revision changes so a new worker does not rely on the previous binding assumption. Diagnostics include `current-message-connector-attached`.
+
+A narrow pre-submission guard detects three consecutive automatic Goal turns that claim local tools are unavailable without any recorded tool call or result. It returns the nonretryable `chatgpt_goal_no_tool_progress` error on the next continuation. This does not set the native Goal status, evaluate scientific progress, retry an experiment, or override a platform refusal. An explicit user message or an actual tool event ends this particular detection sequence; actual failures use their existing error handling. Repeated ordinary text or successful file listings alone do not trigger this guard.
+
+The incident replay showed a successful local command followed by twelve unsupported missing-interface reports. The guard stops before the fourth report is requested. It does not establish why the first assistant claimed an upstream safety rejection: no original upstream rejection response was recovered. Missing MCP activity cannot distinguish a model choosing not to call a tool from a request rejected before reaching MCP. The connector repair addresses a verified implementation gap, not proof that every earlier refusal had the same cause.
+
+Validation: retained-message attachment and Think-mode regression tests, explicit-resume/compaction/actual-tool-event exclusions, adapter-level stop-before-browser tests, and offline replay through the production Responses parser. A live user-account recovery still requires validation after deployment.

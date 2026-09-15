@@ -36,7 +36,7 @@ export function chatGptConversationKey(
   return createHash("sha256").update(JSON.stringify({
     namespace,
     // Bump when a retained transport contract changes incompatibly.
-    transportRevision: "20260913-retained-goal-reference-v3",
+    transportRevision: "20260915-per-message-connector-v4",
     threadId: identity.threadId,
     modelId: parsed.modelId,
     reasoning: parsed.options.reasoning,
