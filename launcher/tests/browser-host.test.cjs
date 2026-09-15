@@ -128,7 +128,7 @@ test("primary browser bootstrap fails closed on navigation, renderer, and timeou
     stalled.loadURL = () => new Promise(() => {});
     await assert.rejects(
       loadCommittedBrowserSurface(stalled, IDLE_BROWSER_URL, 5),
-      /idle document did not commit within 5ms/,
+      /idle document did not become ready within 5ms/,
     );
     assert.deepEqual(calls, ["stop"]);
   } finally {
@@ -3131,4 +3131,75 @@ test("manual turns have no live-session TTL but are revoked when their owner pro
     helperPid: dead.helperPid,
     status: "failed",
   });
+});
+
+test("idle bootstrap accepts DOM readiness without waiting for load completion and restores throttling", async () => {
+  const contents = new EventEmitter();
+  let url = "about:blank";
+  const throttling = [];
+  contents.isDestroyed = () => false;
+  contents.getURL = () => url;
+  contents.getBackgroundThrottling = () => true;
+  contents.setBackgroundThrottling = value => throttling.push(value);
+  contents.loadURL = target => {
+    queueMicrotask(() => { url = target; contents.emit("dom-ready"); });
+    return new Promise(() => {});
+  };
+  await loadCommittedBrowserSurface(contents, IDLE_BROWSER_URL, 50);
+  assert.deepEqual(throttling, [false, true]);
+  assert.equal(contents.listenerCount("dom-ready"), 0);
+});
+
+test("idle timeout records readiness evidence and restores background policy", async () => {
+  const keepAlive = setTimeout(() => {}, 100);
+  const contents = new EventEmitter();
+  const throttling = [];
+  contents.isDestroyed = () => false;
+  contents.getURL = () => "about:blank";
+  contents.isLoading = () => true;
+  contents.getOSProcessId = () => 123;
+  contents.getBackgroundThrottling = () => true;
+  contents.setBackgroundThrottling = value => throttling.push(value);
+  contents.stop = () => {};
+  contents.loadURL = () => new Promise(() => {});
+  try {
+    await assert.rejects(loadCommittedBrowserSurface(contents, IDLE_BROWSER_URL, 5), error => {
+      assert.equal(error.code, "browser_idle_document_timeout");
+      assert.equal(error.diagnostic.expectedUrl, false);
+      assert.equal(error.diagnostic.rendererPid, 123);
+      assert.equal(error.diagnostic.loading, true);
+      return true;
+    });
+    assert.deepEqual(throttling, [false, true]);
+    assert.equal(contents.listenerCount("dom-ready"), 0);
+  } finally { clearTimeout(keepAlive); }
+});
+
+test("primary idle bootstrap retries a timeout once and never retries a renderer failure", async () => {
+  for (const kind of ["recover", "timeout", "crash"]) {
+    const contents = new EventEmitter();
+    let attempts = 0;
+    let url = "about:blank";
+    contents.isDestroyed = () => false;
+    contents.getURL = () => url;
+    contents.stop = () => {};
+    contents.loadURL = async target => {
+      attempts++;
+      if (kind === "recover" && attempts === 2) { url = target; return; }
+      const error = new Error(kind);
+      if (kind !== "crash") error.code = "browser_idle_document_timeout";
+      throw error;
+    };
+    const warnings = [];
+    const fixture = {
+      view: {webContents:contents, setBounds() {}, setVisible() {}},
+      hiddenTurnBounds:()=>({x:0,y:0,width:1,height:1}),
+      markOwnedSurface:async()=>{}, syncViewVisibility() {}, writeDescriptor() {},
+      logger:{info() {},warn:(_event,detail)=>warnings.push(detail)},
+    };
+    if (kind === "recover") await BrowserHost.prototype.initializePrimaryView.call(fixture);
+    else await assert.rejects(BrowserHost.prototype.initializePrimaryView.call(fixture));
+    assert.equal(attempts,kind === "crash" ? 1 : 2);
+    assert.equal(warnings.length,kind === "timeout" ? 2 : 1);
+  }
 });

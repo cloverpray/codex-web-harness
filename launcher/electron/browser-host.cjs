@@ -27,7 +27,7 @@ const {
 const TEMPORARY_CHAT_URL = "https://chatgpt.com/?temporary-chat=true";
 const CHATGPT_ORIGIN = "https://chatgpt.com";
 const IDLE_BROWSER_URL = "data:text/html;charset=utf-8,%3C!doctype%20html%3E%3Chtml%3E%3Chead%3E%3Cmeta%20charset%3D%22utf-8%22%3E%3Ctitle%3ECodex%20Web%20GPT%3C%2Ftitle%3E%3C%2Fhead%3E%3Cbody%3E%3C%2Fbody%3E%3C%2Fhtml%3E#codex-web-gpt-browser-host";
-const PRIMARY_VIEW_BOOTSTRAP_TIMEOUT_MS = 10_000;
+const PRIMARY_VIEW_BOOTSTRAP_TIMEOUT_MS = 30_000;
 const MAX_BROWSER_VIEW_DIMENSION = 16_384;
 const MAX_BROWSER_TABS = 5;
 const MAX_CANCELLED_TURN_TRACES = 256;
@@ -248,13 +248,19 @@ function loadCommittedBrowserSurface(
   }
   return new Promise((resolve, reject) => {
     let settled = false;
+    const startedAt = Date.now();
+    const previousThrottling = contents.getBackgroundThrottling?.();
     const cleanup = () => {
       clearTimeout(timeout);
+      contents.off("dom-ready", onReady);
       contents.off("did-stop-loading", onReady);
       contents.off("did-finish-load", onReady);
       contents.off("did-fail-load", onFailed);
       contents.off("render-process-gone", onRendererGone);
       contents.off("destroyed", onDestroyed);
+      if (!contents.isDestroyed() && typeof previousThrottling === "boolean") {
+        contents.setBackgroundThrottling(previousThrottling);
+      }
     };
     const finish = (error) => {
       if (settled) return;
@@ -281,16 +287,26 @@ function loadCommittedBrowserSurface(
     };
     const onDestroyed = () => finish(new Error("Browser closed during idle document bootstrap"));
     const timeout = setTimeout(() => {
-      finish(new Error(`Browser idle document did not commit within ${timeoutMs}ms`));
+      const error = new Error(`Browser idle document did not become ready within ${timeoutMs}ms`);
+      error.code = "browser_idle_document_timeout";
+      error.diagnostic = {
+        elapsedMs: Date.now() - startedAt,
+        expectedUrl: !contents.isDestroyed() && contents.getURL() === url,
+        loading: !contents.isDestroyed() && contents.isLoading?.(),
+        rendererPid: !contents.isDestroyed() ? contents.getOSProcessId?.() : undefined,
+      };
+      finish(error);
       if (!contents.isDestroyed()) contents.stop();
     }, timeoutMs);
     timeout.unref?.();
+    contents.on("dom-ready", onReady);
     contents.on("did-stop-loading", onReady);
     contents.on("did-finish-load", onReady);
     contents.on("did-fail-load", onFailed);
     contents.on("render-process-gone", onRendererGone);
     contents.on("destroyed", onDestroyed);
     try {
+      if (typeof previousThrottling === "boolean") contents.setBackgroundThrottling(false);
       Promise.resolve(contents.loadURL(url)).then(onReady, error => {
         finish(error instanceof Error ? error : new Error(String(error)));
       });
@@ -432,7 +448,18 @@ class BrowserHost {
     this.view.setBounds(this.hiddenTurnBounds());
     this.view.setVisible(true);
     try {
-      await loadCommittedBrowserSurface(this.view.webContents, IDLE_BROWSER_URL);
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await loadCommittedBrowserSurface(this.view.webContents, IDLE_BROWSER_URL);
+          break;
+        } catch (error) {
+          this.logger.warn("browser.idle_bootstrap_failed", {
+            attempt, code: error.code, message: error.message, ...error.diagnostic,
+          });
+          if (error.code !== "browser_idle_document_timeout" || attempt === 2) throw error;
+          // Only the owned local idle document is retried, never a ChatGPT task submission.
+        }
+      }
       if (browserInteractionModeFor(this) === "automatic") await this.markOwnedSurface();
     } finally {
       this.syncViewVisibility();
