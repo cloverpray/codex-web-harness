@@ -341,9 +341,7 @@ function LauncherShell({
   snapshot: LauncherSnapshot;
   updateState: (state: LauncherState) => void;
 }) {
-  const interactionSetupComplete = snapshot.state.coreSetupComplete === true
-    && (snapshot.state.browserInteractionMode === "manual"
-      || snapshot.state.codexCatalogVerified === true);
+  const interactionSetupComplete = snapshot.state.coreSetupComplete === true;
   const firstRunZeroRiskSetup = snapshot.state.browserInteractionMode === "manual"
     && snapshot.state.coreSetupComplete !== true;
   const [surface, setSurface] = useState<Surface>(
@@ -371,7 +369,7 @@ function LauncherShell({
     && browser?.authenticated !== true;
   const needsSetup = !needsBrowser && !interactionSetupComplete;
   const mcpOptional = snapshot.state.browserInteractionMode === "automatic"
-    && snapshot.state.codexCatalogVerified === true
+    && snapshot.state.coreSetupComplete === true
     && snapshot.state.mcpSetupComplete !== true;
   const updateVisible = ["available", "downloading", "installing"].includes(snapshot.update.status);
   const updateBusy = snapshot.update.status === "downloading" || snapshot.update.status === "installing";
@@ -1153,6 +1151,7 @@ function SetupSurface({
         : manualInteraction ? copy.manualInteractionBody : copy.setupSubtitle}
       title={devProfile ? copy.devSetupTitle : copy.setupTitle}
     >
+      <NetworkProxyPanel copy={copy} snapshot={snapshot} updateState={updateState} setError={setError} />
       <SectionHeading label={devProfile ? copy.devCoreSetup : copy.coreSetup} />
       <div className="setup-list">
         {!manualInteraction ? <>
@@ -1181,15 +1180,16 @@ function SetupSurface({
             action={snapshot.state.coreSetupComplete
             ? devProfile
               ? copy.devReinstall
-              : snapshot.state.codexCatalogVerified === true ? copy.reinstall : copy.awaitingCodex
+              : snapshot.state.codexCatalogVerified === true ? copy.reinstall : copy.recheckCatalog
             : devProfile ? copy.devInstall : copy.install}
-          complete={snapshot.state.codexCatalogVerified === true}
+          complete={snapshot.state.coreSetupComplete === true}
           description={devProfile ? copy.devStepInstallBody : copy.stepInstallBody}
             disabled={busy
               || (!snapshot.smokePassed && snapshot.state.coreSetupComplete !== true)
               }
           index={manualInteraction ? 1 : 3}
-          onAction={install}
+          onAction={snapshot.state.coreSetupComplete && !snapshot.state.codexCatalogVerified && !devProfile
+            ? () => run(async () => { updateState(await api!.recheckCatalog()); }) : install}
           repeatable
           title={devProfile ? copy.devStepInstall : copy.stepInstall}
           titleAction={manualInteraction ? (
@@ -1209,10 +1209,11 @@ function SetupSurface({
         </NoticeRow>
       ) : null}
 
+      {snapshot.state.coreSetupComplete && !snapshot.state.codexCatalogVerified ? <p role="status">{copy.catalogPending}</p> : null}
       <SectionHeading label="MCP" meta={manualInteraction ? copy.required : copy.optional} spaced />
       <button
         className="next-surface-row"
-        disabled={!manualInteraction && !snapshot.state.codexCatalogVerified}
+        disabled={!manualInteraction && !snapshot.state.coreSetupComplete}
         onClick={showMcp}
         type="button"
       >
@@ -1341,7 +1342,7 @@ function McpSurface({
       subtitle={devProfile ? copy.devMcpSubtitle : copy.mcpSubtitle}
       title={devProfile ? copy.devMcpTitle : "MCP"}
     >
-      {!manualInteraction && !configuringInactiveMode && !snapshot.state.codexCatalogVerified ? (
+      {!manualInteraction && !configuringInactiveMode && !snapshot.state.coreSetupComplete ? (
         <NoticeRow icon="setup" tone="warning">{copy.mcpCatalogRequired}</NoticeRow>
       ) : null}
 
@@ -1456,7 +1457,7 @@ function McpSurface({
             ) : null}
             {step === 1 ? (
               <p className="mcp-step-two-hint">
-                {manualInteraction || configuringInactiveMode || snapshot.state.codexCatalogVerified
+                {manualInteraction || configuringInactiveMode || snapshot.state.coreSetupComplete
                   ? copy.mcpStepTwoHint
                   : copy.mcpCatalogRequired}
               </p>
@@ -1503,7 +1504,7 @@ function McpSurface({
           <PrimaryButton
             disabled={
               busy
-              || (!manualInteraction && !configuringInactiveMode && !snapshot.state.codexCatalogVerified)
+              || (!manualInteraction && !configuringInactiveMode && !snapshot.state.coreSetupComplete)
               || ((!credentialsConfigured || replacingCredentials) && (!tunnelId || !runtimeKey))
             }
             onClick={() => void install()}
@@ -1577,6 +1578,37 @@ function ActivitySurface({
       </div>
     </ContentSurface>
   );
+}
+
+function NetworkProxyPanel({copy, snapshot, updateState, setError}: {
+  copy: Copy; snapshot: LauncherSnapshot; updateState: (state: LauncherState) => void;
+  setError: (error: string | null) => void;
+}) {
+  const [mode, setMode] = useState<"inherit" | "direct" | "custom">(snapshot.state.networkProxy?.mode ?? "inherit");
+  const [url, setUrl] = useState(snapshot.state.networkProxy?.url ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const save = async () => {
+    setSaving(true); setError(null); setSaved(false);
+    try { updateState(await api!.setNetworkProxy({mode,url})); setSaved(true); }
+    catch (error) { setError(messageOf(error)); }
+    finally { setSaving(false); }
+  };
+  return <details className="network-proxy-panel">
+    <summary>{copy.proxyTitle}</summary>
+    <p>{copy.proxyBody}</p>
+    <label>{copy.proxyTitle}<select value={mode} disabled={saving}
+      onChange={event => { setMode(event.target.value as typeof mode); setSaved(false); }}>
+      <option value="inherit">{copy.proxyInherit}</option>
+      <option value="direct">{copy.proxyDirect}</option>
+      <option value="custom">{copy.proxyCustom}</option>
+    </select></label>
+    {mode === "custom" ? <label>{copy.proxyAddress}<input type="url" value={url} disabled={saving}
+      placeholder="http://127.0.0.1:7890" autoComplete="off" spellCheck={false}
+      onChange={event => {setUrl(event.target.value);setSaved(false);}} /></label> : null}
+    <SecondaryButton disabled={saving || (mode === "custom" && !url.trim())} onClick={() => void save()}>{copy.proxySave}</SecondaryButton>
+    {saved ? <p role="status">{copy.proxySaved}</p> : null}
+  </details>;
 }
 
 function SettingsSurface({
@@ -1672,6 +1704,7 @@ function SettingsSurface({
 
   return (
     <ContentSurface narrow title={devProfile ? copy.devSettingsTitle : copy.settingsTitle}>
+      <NetworkProxyPanel copy={copy} snapshot={snapshot} updateState={updateState} setError={setError} />
       <SectionHeading label={copy.general} />
       <div className="settings-list">
         {!devProfile ? <SettingRow body={copy.launchAtLoginBody} flushAfter label={copy.launchAtLogin}>

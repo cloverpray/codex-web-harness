@@ -1,3 +1,4 @@
+const { validateNetworkProxy, proxyEnvironment, electronProxyConfig } = require("./network-proxy.cjs");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
@@ -5,6 +6,7 @@ const { spawnSync } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const {
   app,
+  session,
   BrowserWindow,
   dialog,
   ipcMain,
@@ -622,6 +624,23 @@ function registerIpc({ logger, stateStore }) {
     }
   });
 
+  handle("launcher:set-network-proxy", (_event, value) => {
+    const networkProxy = validateNetworkProxy(value);
+    const state = stateStore.update({ networkProxy });
+    send("launcher:state-changed", state);
+    return state;
+  });
+  handle("launcher:recheck-catalog", async () => {
+    const config = runtimeSupervisor.readConfig();
+    const health = await runtimeSupervisor.proxyHealthPayload(config);
+    if (health?.successful_model_catalog_requests > 0) {
+      const state = stateStore.update({ codexCatalogVerified: true, codexRestartRequired: false });
+      send("launcher:state-changed", state);
+      return state;
+    }
+    startCatalogVerificationMonitor({logger,stateStore});
+    return stateStore.read();
+  });
   handle("launcher:doctor", () => IS_DEV_PROFILE ? runtimeHost.devDoctor() : runtimeHost.doctor());
   handle("launcher:cancel-turns", () => {
     if (IS_DEV_PROFILE) throw new Error("DEV chat turns are owned by the repository CLI process");
@@ -931,6 +950,19 @@ async function start() {
   await app.whenReady();
 
   const stateStore = createStateStore(path.join(app.getPath("userData"), "launcher-state.json"));
+  const networkProxy = stateStore.read().networkProxy;
+  const networkEnv = proxyEnvironment(networkProxy, process.env);
+  for (const key of ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy','NO_PROXY','no_proxy']) {
+    if (networkEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = networkEnv[key];
+  }
+  const browserProxy = electronProxyConfig(networkProxy);
+  if (browserProxy) {
+    await Promise.all([session.defaultSession,
+      session.fromPartition('persist:codex-web-gpt-chatgpt'),
+      session.fromPartition('persist:codex-web-gpt-dev-chatgpt')].map(s => s.setProxy(browserProxy)));
+  }
+
   if (IS_DEV_PROFILE && !stateStore.read().onboardingComplete) {
     stateStore.update({
       language: stateStore.read().language || "en",

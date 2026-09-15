@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("codexWebLauncher", {
   doctor: () => ipcRenderer.invoke("launcher:doctor"),
   cancelTurns: () => ipcRenderer.invoke("launcher:cancel-turns"),
   uninstallIntegration: () => ipcRenderer.invoke("launcher:uninstall-integration"),
+  setNetworkProxy: (value) => ipcRenderer.invoke("launcher:set-network-proxy", value),
+  recheckCatalog: () => ipcRenderer.invoke("launcher:recheck-catalog"),
   setupCore: () => ipcRenderer.invoke("launcher:setup-core"),
   setupMcp: (input) => ipcRenderer.invoke("launcher:setup-mcp", input),
   setMcpStep: (step) => ipcRenderer.invoke("launcher:set-mcp-step", step),

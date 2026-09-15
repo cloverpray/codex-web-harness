@@ -17,6 +17,7 @@ test("launcher state persists onboarding, language, and autostart atomically", (
     const store = createStateStore(file);
     assert.deepEqual(store.read(), {
       version: 1,
+      networkProxy: { mode: "inherit", url: "" },
       language: null,
       onboardingComplete: false,
       githubOpened: false,
@@ -43,6 +44,7 @@ test("launcher state persists onboarding, language, and autostart atomically", (
     });
     assert.deepEqual(createStateStore(file).read(), {
       version: 1,
+      networkProxy: { mode: "inherit", url: "" },
       language: "zh-CN",
       onboardingComplete: true,
       githubOpened: false,
@@ -94,6 +96,7 @@ test("persisted sidebar corruption is repaired without changing the rest of laun
   try {
     fs.writeFileSync(file, JSON.stringify({
       version: 1,
+      networkProxy: { mode: "inherit", url: "" },
       language: "zh-CN",
       onboardingComplete: "yes",
       autoStart: "yes",
@@ -108,6 +111,7 @@ test("persisted sidebar corruption is repaired without changing the rest of laun
     }));
     assert.deepEqual(createStateStore(file).read(), {
       version: 1,
+      networkProxy: { mode: "inherit", url: "" },
       language: "zh-CN",
       onboardingComplete: false,
       githubOpened: false,
@@ -143,6 +147,7 @@ test("browser interaction defaults to Automatic and preserves a completed onboar
     assert.equal(createStateStore(file).read().zeroRiskProEnabled, true);
     fs.writeFileSync(file, JSON.stringify({
       version: 1,
+      networkProxy: { mode: "inherit", url: "" },
       browserInteractionMode: "manual",
       zeroRiskProEnabled: true,
     }));
@@ -150,6 +155,7 @@ test("browser interaction defaults to Automatic and preserves a completed onboar
     assert.equal(createStateStore(file).read().zeroRiskProEnabled, false);
     fs.writeFileSync(file, JSON.stringify({
       version: 1,
+      networkProxy: { mode: "inherit", url: "" },
       onboardingComplete: true,
       browserInteractionMode: "manual",
     }));

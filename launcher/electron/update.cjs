@@ -71,7 +71,51 @@ function validateReleaseAssetUrl(raw, version, assetName) {
   return url.toString();
 }
 
+async function electronUpdateRequest(url, redirects) {
+  if (redirects > MAX_REDIRECTS) throw new Error("Too many update redirects");
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:") throw new Error("Refusing non-HTTPS update URL");
+  const controller = new AbortController();
+  const timeout = () => setTimeout(() => controller.abort(new Error("Update request timed out")), 60_000);
+  let timer = timeout();
+  let response;
+  try {
+    response = await require("electron").net.fetch(parsed.toString(), {
+      redirect: "manual", credentials: "omit", signal: controller.signal,
+      headers: { Accept: "application/vnd.github+json", "User-Agent": USER_AGENT },
+    });
+  } finally { clearTimeout(timer); }
+  if ([301,302,303,307,308].includes(response.status) && response.headers.get("location")) {
+    await response.body?.cancel();
+    return electronUpdateRequest(new URL(response.headers.get("location"), parsed).toString(), redirects + 1);
+  }
+  if (response.status !== 200 || !response.body) {
+    await response.body?.cancel();
+    throw new Error(`Update download failed with HTTP ${response.status}`);
+  }
+  // Bound idle reads, not total download time: installation packages can be large.
+  return require("node:stream").Readable.from((async function* () {
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        timer = timeout();
+        let chunk;
+        try { chunk = await reader.read(); } finally { clearTimeout(timer); }
+        if (chunk.done) break;
+        yield Buffer.from(chunk.value);
+      }
+    } finally {
+      clearTimeout(timer);
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+  })());
+}
+
 function request(url, redirects = 0) {
+  // Desktop updates use Chromium's configured proxy, like the ChatGPT session.
+  if (process.versions.electron && !process.env.ELECTRON_RUN_AS_NODE) return electronUpdateRequest(url, redirects);
+
   return new Promise((resolve, reject) => {
     if (redirects > MAX_REDIRECTS) {
       reject(new Error(`Too many redirects while downloading ${url}`));

@@ -1,6 +1,17 @@
 import type { Language } from "./types";
 
 const en = {
+  proxyTitle: "Network proxy",
+  proxyInherit: "Keep existing network settings",
+  proxyDirect: "Direct connection",
+  proxyCustom: "Custom HTTP proxy",
+  proxyBody: "Use the HTTP or Mixed port of your proxy app. Applies to ChatGPT and newly started runtime/Tunnel processes. Local Bridge traffic stays direct. Save, then fully quit and reopen this launcher.",
+  proxySave: "Save proxy settings",
+  proxySaved: "Saved. Fully quit and reopen this launcher to apply.",
+  proxyAddress: "Proxy address",
+  recheckCatalog: "Check model detection",
+  catalogPending: "No model-list request detected yet. You can continue configuring Harness; restart Codex and open its model picker to verify later.",
+
   product: "Codex Web GPT",
   devBadge: "DEV",
   devSetupTitle: "Set up the isolated DEV profile",
@@ -120,7 +131,7 @@ const en = {
   mcpStepTwo: "Connect the local harness",
   mcpStepTwoBody: "Paste the Tunnel ID and API key. The tunnel must belong to the same OpenAI account that will use the ChatGPT plugin. The key stays in private local storage and is never written to launcher logs.",
   mcpStepTwoHint: "You can add the MCP connector in ChatGPT only after this step succeeds and the tunnel is running.",
-  mcpCatalogRequired: "Connect harness is unavailable until the Codex models are installed and verified. Return to Setup, click Install models, restart Codex once, and wait for the model catalog check to complete.",
+  mcpCatalogRequired: "Install models in Setup first, then connect Harness. Model-list detection can be completed later.",
   tunnelId: "Tunnel ID",
   runtimeKey: "API key (not Admin key)",
   connect: "Connect harness",
@@ -193,6 +204,17 @@ const en = {
 } as const;
 
 const zh: Record<keyof typeof en, string> = {
+  proxyTitle: "网络代理",
+  proxyInherit: "沿用现有网络设置",
+  proxyDirect: "直连",
+  proxyCustom: "自定义 HTTP 代理",
+  proxyBody: "填写代理软件的 HTTP 或 Mixed 端口。用于 ChatGPT 和新启动的服务、Tunnel 进程；本地 Bridge 通信直连。保存后彻底退出并重新打开本软件生效。",
+  proxySave: "保存代理设置",
+  proxySaved: "已保存。彻底退出并重新打开本软件后生效。",
+  proxyAddress: "代理地址",
+  recheckCatalog: "重新检测模型",
+  catalogPending: "尚未检测到模型列表请求。可以先继续配置 Harness；之后重启 Codex 并打开模型选择器验证。",
+
   product: "Codex Web GPT",
   devBadge: "DEV",
   devSetupTitle: "设置隔离的 DEV 配置",
@@ -312,7 +334,7 @@ const zh: Record<keyof typeof en, string> = {
   mcpStepTwo: "连接本地 Harness",
   mcpStepTwoBody: "粘贴 Tunnel ID 和 API key。Tunnel 必须属于将使用该 ChatGPT 插件的同一 OpenAI 账户。密钥只保存在本机私有存储中，绝不会写入启动器日志。",
   mcpStepTwoHint: "只有此步骤成功且 Tunnel 正在运行后，才能在 ChatGPT 中添加 MCP 连接器。",
-  mcpCatalogRequired: "在 Codex 模型安装并验证完成前，无法连接 Harness。请返回“设置”，点击“安装模型”，重启一次 Codex，并等待模型列表验证完成。",
+  mcpCatalogRequired: "请先返回“设置”完成安装模型，然后继续连接 Harness。模型列表验证可以稍后完成。",
   tunnelId: "Tunnel ID",
   runtimeKey: "API key（不是 Admin key）",
   connect: "连接 Harness",
@@ -385,6 +407,17 @@ const zh: Record<keyof typeof en, string> = {
 };
 
 const ja: Record<keyof typeof en, string> = {
+  proxyTitle: "ネットワークプロキシ",
+  proxyInherit: "既存のネットワーク設定を維持",
+  proxyDirect: "直接接続",
+  proxyCustom: "HTTP プロキシを指定",
+  proxyBody: "プロキシアプリの HTTP または Mixed ポートを指定します。ChatGPT と新しいランタイム・Tunnel プロセスに適用します。ローカル Bridge は直接接続します。保存後、このアプリを完全に終了して再起動してください。",
+  proxySave: "プロキシ設定を保存",
+  proxySaved: "保存しました。このアプリを完全に終了して再起動してください。",
+  proxyAddress: "プロキシアドレス",
+  recheckCatalog: "モデルを再確認",
+  catalogPending: "モデル一覧の要求は未検出です。Harness の設定は続行できます。後で Codex を再起動してモデル一覧を確認してください。",
+
   product: "Codex Web GPT",
   devBadge: "DEV",
   devSetupTitle: "隔離された DEV プロファイルをセットアップ",
@@ -504,7 +537,7 @@ const ja: Record<keyof typeof en, string> = {
   mcpStepTwo: "ローカルハーネスを接続",
   mcpStepTwoBody: "Tunnel ID と API キーを貼り付けます。トンネルは、ChatGPT プラグインを使用する OpenAI アカウントと同じアカウントに属している必要があります。キーは非公開のローカルストレージに保存され、ランチャーログには記録されません。",
   mcpStepTwoHint: "この手順が成功し、トンネルが実行中になってから ChatGPT に MCP コネクタを追加できます。",
-  mcpCatalogRequired: "Codex モデルのインストールと検証が完了するまでハーネスを接続できません。セットアップに戻り、［モデルをインストール］を押して Codex を一度再起動し、モデルカタログの確認が完了するまで待ってください。",
+  mcpCatalogRequired: "先にセットアップでモデルをインストールしてください。モデル一覧の検証は後で行えます。",
   tunnelId: "Tunnel ID",
   runtimeKey: "API キー（Admin キーではありません）",
   connect: "ハーネスを接続",

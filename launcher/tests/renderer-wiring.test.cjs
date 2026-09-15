@@ -183,12 +183,12 @@ test("Zero Risk setup commits state after the runtime transaction and preserves 
 
 });
 
-test("MCP connection remains unavailable until the model catalog is verified", () => {
+test("MCP connection requires installation but not passive catalog detection", () => {
   assert.match(
     appSource,
-    /manualInteraction \|\| configuringInactiveMode \|\| snapshot\.state\.codexCatalogVerified[\s\S]*?copy\.mcpStepTwoHint[\s\S]*?copy\.mcpCatalogRequired/,
+    /manualInteraction \|\| configuringInactiveMode \|\| snapshot\.state\.coreSetupComplete[\s\S]*?copy\.mcpStepTwoHint[\s\S]*?copy\.mcpCatalogRequired/,
   );
-  assert.match(appSource, /!manualInteraction && !configuringInactiveMode && !snapshot\.state\.codexCatalogVerified/);
+  assert.match(appSource, /!manualInteraction && !configuringInactiveMode && !snapshot\.state\.coreSetupComplete/);
 });
 
 test("MCP navigation remains locked while an operation is active", () => {
@@ -252,8 +252,8 @@ test("saved ChatGPT authentication is refreshed before setup is presented", () =
   assert.match(appSource, /browser\?\.status === "loading" \? copy\.checkingSignIn/);
 });
 
-test("completed model setup remains a repeatable capability probe", () => {
-  assert.match(appSource, /<SetupRow[\s\S]*?onAction=\{install\}[\s\S]*?repeatable/);
+test("completed model setup can recheck without reinstalling", () => {
+  assert.match(appSource, /api!\.recheckCatalog\(\)/);
   assert.match(appSource, /complete && !repeatable/);
   assert.match(
     electronMain,

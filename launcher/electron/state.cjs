@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const { validateNetworkProxy } = require("./network-proxy.cjs");
 const { writePrivateFileAtomic } = require("./atomic-file.cjs");
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 420;
@@ -6,6 +7,7 @@ const SESSION_REFRESH_REMINDER_INTERVAL_MS = 48 * 60 * 60 * 1000;
 
 const DEFAULT_STATE = Object.freeze({
   version: 1,
+  networkProxy: { mode: "inherit", url: "" },
   language: null,
   onboardingComplete: false,
   githubOpened: false,
@@ -35,6 +37,8 @@ function readState(filePath) {
     if (!parsed || parsed.version !== 1) return { ...DEFAULT_STATE };
     const state = { ...DEFAULT_STATE, ...parsed };
     delete state.bridgeEnabled;
+    try { state.networkProxy = validateNetworkProxy(state.networkProxy); }
+    catch { state.networkProxy = { mode: "inherit", url: "" }; }
     if (state.language !== null && state.language !== "en" && state.language !== "zh-CN" && state.language !== "ja") {
       state.language = DEFAULT_STATE.language;
     }

@@ -5,6 +5,7 @@ export type Surface = "browser" | "setup" | "mcp" | "activity" | "settings";
 
 export interface LauncherState {
   version: 1;
+  networkProxy?: {mode: "inherit" | "direct" | "custom"; url: string};
   language: Language | null;
   onboardingComplete: boolean;
   githubOpened: boolean;
@@ -145,6 +146,8 @@ export interface LauncherApi {
   doctor(): Promise<DoctorReport>;
   cancelTurns(): Promise<{ stdout: string }>;
   uninstallIntegration(): Promise<{ cancelled: true } | { cancelled: false; state: LauncherState }>;
+  setNetworkProxy(value: {mode: "inherit" | "direct" | "custom"; url: string}): Promise<LauncherState>;
+  recheckCatalog(): Promise<LauncherState>;
   setupCore(): Promise<{ ok: boolean; stdout: string; restartRequired: boolean }>;
   setupMcp(input: {
     tunnelId?: string;
