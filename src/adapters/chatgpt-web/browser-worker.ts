@@ -547,6 +547,26 @@ async function ensureChatGptPersonalizedConnectorAccessWithinDeadline(
         await capture("personalization-already-enabled");
         return "already-personalized";
       }
+      const structuralControls = page.locator(CHATGPT_PERSONALIZATION_CONTROL_SELECTOR).filter({ visible: true });
+      try {
+        await structuralControls.first().waitFor({state: "visible",
+          timeout: Math.min(1_500, remainingChatGptPersonalizationMs(deadline, abortSignal)), signal: abortSignal});
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+      }
+      if (await runChatGptPersonalizationStep(() => structuralControls.count(), deadline, abortSignal) === 0) {
+        // A cold connector search is not evidence that personalization is disabled.
+        await capture("connector-proof-recheck-without-personalization-control");
+        if (await proveConnectorAccess()) {
+          await capture("personalization-already-enabled");
+          return "already-personalized";
+        }
+        await capture("connector-unavailable-without-personalization-control");
+        throw chatGptConnectorUnavailableError(
+          "The configured connector did not appear after two menu lookups; no personalization control is visible. "
+          + "No task was submitted and no personalization setting was changed.",
+        );
+      }
       await capture("personalization-unpersonalized");
       const toggleReceipt = await toggleChatGptPersonalizationChoice(page, deadline, abortSignal);
       try {
@@ -3145,7 +3165,7 @@ export class ChatGptBrowserWorker {
           });
           await capture("personalization-proof-mention-triggered");
           try {
-            await appResult.waitFor({ state: "visible", timeout: 2_500, signal: personalizationSignal });
+            await appResult.waitFor({ state: "visible", timeout: 8_000, signal: personalizationSignal });
             proofResult = true;
             await capture("personalization-proof-menu-visible");
           } catch (error) {

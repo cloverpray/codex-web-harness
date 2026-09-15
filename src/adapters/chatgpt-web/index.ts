@@ -1,4 +1,4 @@
-import { repeatedUnverifiedToolUnavailability } from "./goal-stall";
+import { GoalToolStallGuard } from "./goal-stall";
 import { compiledChatGptWebMessages } from "./input-tokens";
 import { compactCommandOutput } from "./output-artifacts";
 import { createHash, randomBytes } from "node:crypto";
@@ -140,6 +140,8 @@ export interface ChatGptZeroRiskManualControl {
   end(descriptorPath: string, activity: LauncherManualTurnEnd): Promise<unknown>;
   cancel(descriptorPath: string, owner: LauncherManualTurnOwner): Promise<void>;
 }
+
+const goalToolStallGuard = new GoalToolStallGuard();
 
 const launcherZeroRiskManualControl: ChatGptZeroRiskManualControl = {
   start: startLauncherManualTurn,
@@ -884,7 +886,9 @@ export function createChatGptWebAdapter(
         const mode = manualRequest
           ? { localTools: true }
           : resolveChatGptWebModelMode(parsed.modelId, parsed.options.reasoning, turnCapabilities);
-        if (!manualRequest && mode.localTools && repeatedUnverifiedToolUnavailability(parsed)) {
+        const stallIdentity = extractChatGptTurnIdentity(parsed);
+        const stallKey = stallIdentity.threadId ? `${executionNamespace}:${stallIdentity.threadId}` : undefined;
+        if (!manualRequest && mode.localTools && goalToolStallGuard.shouldStop(stallKey, parsed)) {
           console.warn(`[chatgpt-web] goal_stall ${JSON.stringify({
             ...extractChatGptTurnIdentity(parsed), reason: "three_tool_unavailable_answers_without_calls",
             policyVerdict: "unknown", action: "stop_before_submission",
@@ -1379,6 +1383,8 @@ export function createChatGptWebAdapter(
                   throw new Error("ChatGPT browser Markdown stream did not reproduce the completed answer");
                 }
                 structuredOutputValidator?.(completedOutcome.answer);
+                goalToolStallGuard.observe(stallKey, stallIdentity.turnId, parsed, completedOutcome.answer,
+                  session.runtime.mode === "tools" && session.runtime.externalProgress.snapshot().lastToolBatchRevision > 0);
                 if (bufferStructuredOutput) {
                   emitRoundBatch(buffer => emitTextDeltas([completedOutcome.answer], buffer));
                 }

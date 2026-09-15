@@ -688,3 +688,18 @@ test("ambiguous personalization controls fail before connector selection", async
     retryable: false,
   });
 });
+
+test("a cold connector catalog without a personalization control is rechecked without changing settings", async () => {
+  const absent = visibleLocator(() => 0);
+  const controls = {filter() {return this;},first() {return this;},count:async()=>0,
+    waitFor:async()=>{const error=new Error("not present");error.name="TimeoutError";throw error;}};
+  const page = {getByRole:()=>absent,locator:()=>controls} as any;
+  for (const recovers of [true,false]) {
+    let attempts=0;const diagnostics:string[]=[];
+    const operation=ensureChatGptPersonalizedConnectorAccess(page,async c=>{diagnostics.push(c);},async()=>++attempts===2&&recovers);
+    if(recovers)expect(await operation).toBe("already-personalized");
+    else await expect(operation).rejects.toThrow("after two menu lookups; no personalization control is visible");
+    expect(attempts).toBe(2);
+    expect(diagnostics).not.toContain("personalization-unpersonalized");
+  }
+});

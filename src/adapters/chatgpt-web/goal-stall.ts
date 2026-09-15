@@ -14,26 +14,22 @@ function unavailable(value: string): boolean {
     && /(?:不可用|没有可用|未提供可用|无法调用|无法访问|无法读取|无法执行|无法继续|unavailable|no .*?(?:interface|tools?)|cannot (?:access|call|execute))/i.test(value);
 }
 
-/** A narrow transport stop, never a scientific verdict or an update to the native Goal. */
-export function repeatedUnverifiedToolUnavailability(parsed: CodexParsedRequest): boolean {
-  if (parsed._compactionRequest || parsed._textCompactionRequest) return false;
-  const messages = parsed.context.messages;
-  if (!messages.length || !continuation(messages.at(-1)!)) return false;
-  let completed = 0;
-  let answer = "";
-  for (let i = messages.length - 2; i >= Math.max(0, messages.length - 100); i--) {
-    const message = messages[i]!;
-    // Actual attempts/results, including failures, are a different situation with their own policy.
-    if (message.role === "toolResult") return false;
-    if (message.role === "assistant") {
-      if (message.content.some(part => part.type === "toolCall")) return false;
-      if (!message.phase || ["final", "final_answer"].includes(message.phase)) answer += text(message);
-    }
-    if (message.role === "user") {
-      if (!continuation(message) || !unavailable(answer)) return false;
-      if (++completed >= 3) return true;
-      answer = "";
-    }
+/** Count only completed turns witnessed by this runtime, not stale replayed history. */
+export class GoalToolStallGuard {
+  private states = new Map<string, { count: number; turn: string }>();
+  shouldStop(key: string | undefined, parsed: CodexParsedRequest): boolean {
+    if (!key || parsed._compactionRequest || parsed._textCompactionRequest) return false;
+    const user = parsed.context.messages.findLast(message => message.role === "user");
+    if (!user || !continuation(user)) { this.states.delete(key); return false; }
+    return (this.states.get(key)?.count ?? 0) >= 3;
   }
-  return false;
+  observe(key: string | undefined, turn: string | undefined, parsed: CodexParsedRequest, answer: string, hadTools: boolean): void {
+    if (!key || !turn || parsed._compactionRequest || parsed._textCompactionRequest) return;
+    const user = parsed.context.messages.findLast(message => message.role === "user");
+    if (!user || !continuation(user)) { this.states.delete(key); return; }
+    const previous = this.states.get(key);
+    if (previous?.turn === turn) return; // response replay is not a new failed turn
+    this.states.set(key, {turn, count: !hadTools && unavailable(answer) ? (previous?.count ?? 0) + 1 : 0});
+    if (this.states.size > 256) this.states.delete(this.states.keys().next().value!);
+  }
 }
